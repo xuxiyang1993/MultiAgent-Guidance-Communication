@@ -1,0 +1,12 @@
+========================== Time Step: 100 =============================
+Number of conflicts: 0.0
+Total Aircraft Genrated: 9
+Goal Aircraft: 0
+NMACs: 0
+Current Aircraft Enroute: 9
+========================== Time Step: 200 =============================
+Number of conflicts: 0.0
+Total Aircraft Genrated: 15
+Goal Aircraft: 0
+NMACs: 0
+Current Aircraft Enroute: 15
