@@ -11,7 +11,7 @@ from MultiAircraftVertiportEnv import MultiAircraftEnv
 # from testEnv import MultiAircraftEnv
 
 
-def run_experiment(env, render, save_path):
+def run_experiment(env, no_episodes, render, save_path):
     text_file = open(save_path, "w")  # save all non-terminal print statements in a txt file
     episode = 0
     epi_returns = []
@@ -19,7 +19,7 @@ def run_experiment(env, render, save_path):
     num_aircraft = Config.num_aircraft
     time_dict = {}
 
-    while episode < Config.no_episodes:
+    while episode < no_episodes:
         # at the beginning of each episode, set done to False, set time step in this episode to 0
         # set reward to 0, reset the environment
         episode += 1
@@ -73,10 +73,21 @@ def run_experiment(env, render, save_path):
                 print('Number of conflicts:', env.conflicts / 2, file=text_file)
                 print('Total Aircraft Genrated:', env.id_tracker, file=text_file)
                 print('Goal Aircraft:', env.goals, file=text_file)
-                print('NMACs:', env.NMACs, file=text_file)
+                print('NMACs:', env.NMACs / 2, file=text_file)
+                print('NMAC/h:', (env.NMACs / 2) / (env.total_timesteps / 3600), file=text_file)
+                print('Total Flight Hours:', env.total_timesteps / 3600, file=text_file)
                 print('Current Aircraft Enroute:', env.aircraft_dict.num_aircraft, file=text_file)
 
-            if env.id_tracker >= 10000:
+                print('========================== Time Step: %d =============================' % episode_time_step)
+                print('Number of conflicts:', env.conflicts / 2)
+                print('Total Aircraft Genrated:', env.id_tracker)
+                print('Goal Aircraft:', env.goals)
+                print('NMACs:', env.NMACs / 2)
+                print('NMAC/h:', (env.NMACs / 2) / (env.total_timesteps / 3600))
+                print('Total Flight Hours:', env.total_timesteps / 3600)
+                print('Current Aircraft Enroute:', env.aircraft_dict.num_aircraft)
+
+            if env.id_tracker - 1 >= 10000:
                 counter += 1
                 near_end = True
 
@@ -88,7 +99,7 @@ def run_experiment(env, render, save_path):
         print('Number of conflicts:', env.conflicts / 2)
         print('Total Aircraft Genrated:', env.id_tracker)
         print('Goal Aircraft:', env.goals)
-        print('NMACs:', env.NMACs)
+        print('NMACs:', env.NMACs / 2)
         print('Current Aircraft Enroute:', env.aircraft_dict.num_aircraft)
         for key, item in time_dict.items():
             print('%d aircraft: %.2f' % (key, np.mean(item)))
@@ -106,8 +117,8 @@ def run_experiment(env, render, save_path):
     print('Search depth:', Config.search_depth)
     print('Simulations:', Config.no_simulations)
     print('Time:', sum(flat_list) / float(len(flat_list)))
-    print('NMAC prob:', epi_returns.count('n') / Config.no_episodes)
-    print('Goal prob:', epi_returns.count('g') / Config.no_episodes)
+    print('NMAC prob:', epi_returns.count('n') / no_episodes)
+    print('Goal prob:', epi_returns.count('g') / no_episodes)
     print('Average Conflicts per episode:',
           sum(conflicts_list) / float(len(conflicts_list)) / 2)  # / 2 to ignore duplication
     env.close()
@@ -116,8 +127,10 @@ def run_experiment(env, render, save_path):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--no_episodes', '-e', type=int, default=10)
     parser.add_argument('--seed', type=int, default=2)
     parser.add_argument('--save_path', '-p', type=str, default='output/seed2.txt')
+    parser.add_argument('--debug', '-d', action='store_true')
     parser.add_argument('--render', '-r', action='store_true')
     args = parser.parse_args()
 
@@ -126,8 +139,8 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
-    env = MultiAircraftEnv(args.seed)
-    run_experiment(env, args.render, args.save_path)
+    env = MultiAircraftEnv(args.seed, args.debug)
+    run_experiment(env, args.no_episodes, args.render, args.save_path)
 
 
 if __name__ == '__main__':
