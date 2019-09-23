@@ -2,6 +2,8 @@ import copy
 import math
 import numpy as np
 
+import matplotlib.path as mpltPath
+
 from common import MCTSNode, MCTSState
 from config_vertiport import Config
 
@@ -39,7 +41,7 @@ class MultiAircraftState(MCTSState):
             r = 1
         else:
             r = 1 - self.dist_goal() / 1200.0  # - self.dist_intruder() / 1200
-            r /= 4
+            r /= 2
         return r
 
     def is_terminal_state(self, search_depth):
@@ -48,12 +50,13 @@ class MultiAircraftState(MCTSState):
         return False
 
     def move(self, a):
-        if self.depth < 1:
-            next_state = self._move(a)
-        else:
-            random_action = np.random.randint(0, 3, size=self.state.shape[0])
-            next_state = self._move(random_action)
-            # print('rand2')
+        # if self.depth < 1:
+        #     next_state = self._move(a)
+        # else:
+        #     random_action = np.random.randint(0, 3, size=self.state.shape[0])
+        #     next_state = self._move(random_action)
+        #     # print('rand2')
+        next_state = self._move(a)
 
         return next_state
 
@@ -67,7 +70,8 @@ class MultiAircraftState(MCTSState):
 
         for _ in range(Config.simulate_frame):
             for index in range(state.shape[0]):
-                heading = state[index, 5] + (a[index] - 1) * Config.d_heading  # degree
+                heading = state[index, 5] + (a[index] - 1) * Config.d_heading \
+                          + np.random.normal(0, Config.heading_sigma)
                 speed = state[index, 4] + np.random.normal(0, Config.speed_sigma)
                 speed = max(Config.min_speed, min(speed, Config.max_speed))  # project to range
                 vx = speed * math.cos(heading)
@@ -85,16 +89,18 @@ class MultiAircraftState(MCTSState):
             goalx = state[self.index][6]
             goaly = state[self.index][7]
 
-            if not 0 < ownx < Config.window_width or not 0 < owny < Config.window_height:
-                hit_wall = True
-                break
-
-            if self.dist_intruder(state, ownx, owny) < Config.minimum_separation:
+            # if self.dist_intruder(state, ownx, owny) < Config.minimum_separation:
+            if self.conflict_intruder(state, ownx, owny):
                 conflict = True
                 break
 
             if self.metric(ownx, owny, goalx, goaly) < Config.goal_radius:
                 reach_goal = True
+                break
+
+            if not 0 < ownx < Config.window_width or not 0 < owny < Config.window_height:
+                hit_wall = True
+                break
 
         return MultiAircraftState(state, self.index, 'random', hit_wall, conflict, reach_goal, a, self.depth+1)
 
@@ -104,7 +110,16 @@ class MultiAircraftState(MCTSState):
     def dist_goal(self):
         dx = self.ownx - self.goalx
         dy = self.owny - self.goaly
-        return math.sqrt(dx**2 + dy**2)
+        return math.sqrt(dx ** 2 + dy ** 2)
+
+    def conflict_intruder(self, state, ownx, owny):
+        for i in [x for x in range(state.shape[0]) if x != self.index]:
+            otherx = state[i][0]
+            othery = state[i][1]
+            dist = self.metric(ownx, owny, otherx, othery)
+            if dist < Config.minimum_separation:
+                return True
+        return False
 
     def dist_intruder(self, state, ownx, owny):
         distance = 5000
@@ -121,7 +136,7 @@ class MultiAircraftState(MCTSState):
     def metric(self, x1, y1, x2, y2):
         dx = x1 - x2
         dy = y1 - y2
-        return math.sqrt(dx**2 + dy**2)
+        return math.sqrt(dx ** 2 + dy ** 2)
 
     # state: (x, y, vx, vy, heading angle, gx, gy)
     @property
@@ -205,7 +220,7 @@ class MultiAircraftNode(MCTSNode):
 
     def __repr__(self):
         s = 'Agent: %d, Node: children: %d; visits: %d; reward: %.4f; p_action: %s, state: (%.2f, %.2f); ' \
-            'goal: (%.2f, %.2f), dist: %.2f, nearest: (%.2f, %.2f)' \
+            'goal: (%.2f, %.2f), dist_goal: %.2f, nearest: (%.2f, %.2f)' \
             % (self.state.index + 1,
                len(self.children),
                self.n,
