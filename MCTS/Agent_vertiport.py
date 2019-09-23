@@ -2,10 +2,13 @@ import argparse
 import numpy as np
 import time
 
-from config_vertiport import Config
-from MultiAircraftVertiportEnv import MultiAircraftEnv
+import sys
+sys.path.extend(['../Simulators'])
 from nodes_multi import MultiAircraftNode, MultiAircraftState
 from search_multi import MCTS
+from config_vertiport import Config
+from MultiAircraftVertiportEnv import MultiAircraftEnv
+# from testEnv import MultiAircraftEnv
 
 
 def run_experiment(env, render, save_path):
