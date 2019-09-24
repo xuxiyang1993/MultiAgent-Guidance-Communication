@@ -43,6 +43,9 @@ class Config:
     d_heading = math.radians(5)
     heading_sigma = math.radians(2)
 
+    # power
+    aircraft_power = 100
+
     # MCTS algorithm
     no_simulations = 100
     search_depth = 3

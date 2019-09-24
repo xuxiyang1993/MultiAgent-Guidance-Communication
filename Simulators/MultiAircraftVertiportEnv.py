@@ -46,6 +46,8 @@ class MultiAircraftEnv(gym.Env):
         self.conflicts = 0
         self.seed(sd)
 
+        self.centralized_controller = Controller(self)
+
         self.debug = debug
 
     def seed(self, seed=None):
@@ -202,6 +204,7 @@ class MultiAircraftEnv(gym.Env):
 
         self.total_timesteps += self.aircraft_dict.num_aircraft
 
+        return self.centralized_controller.get_ob(), reward, terminal, info
         return self._get_ob(), reward, terminal, info
 
     def _terminal_reward(self):
@@ -479,6 +482,7 @@ class Aircraft:
         self.speed_sigma = Config.speed_sigma
         # self.position_sigma = Config.position_sigma
         self.d_heading = Config.d_heading
+        self.power = Config.aircraft_power
 
     def step(self, a=1):
         self.speed = max(self.min_speed, min(self.speed, self.max_speed))  # project to range
@@ -489,6 +493,29 @@ class Aircraft:
         self.velocity = np.array([vx, vy])
 
         self.position += self.velocity
+
+    def send_info_to(self, controller):
+        dx = controller.position[0] - self.position[0]
+        dy = controller.position[1] - self.position[1]
+        dist = math.sqrt(dx ** 2 + dy ** 2)
+        power = dist
+        self.power -= power
+
+        self.send_state_to(controller.information_center['state'])
+        self.send_id_to(controller.information_center['id'])
+
+    def send_state_to(self, lst):
+        lst.append(self.position[0])
+        lst.append(self.position[1])
+        lst.append(self.velocity[0])
+        lst.append(self.velocity[1])
+        lst.append(self.speed)
+        lst.append(self.heading)
+        lst.append(self.goal.position[0])
+        lst.append(self.goal.position[1])
+
+    def send_id_to(self, lst):
+        lst.append(self.id)
 
     def __repr__(self):
         s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f, sub-goal: %.2f,%.2f' \
@@ -524,8 +551,18 @@ class VertiPort:
 
 
 class Controller:
-    def __init__(self):
+    def __init__(self, env):
         self.position = np.array([400, 400])
+        self.env = env
+        self.information_center = {'state': [], 'id': []}
 
-    def process_input(self, input):
-        return input
+    def get_ob(self):
+        self.information_center = {'state': [], 'id': []}
+        for key, aircraft in self.env.aircraft_dict.ac_dict.items():
+            aircraft.send_state_to(self.information_center['state'])
+            aircraft.send_id_to(self.information_center['id'])
+
+        return self.process_state(np.reshape(self.information_center['state'], (-1, 8))), self.information_center['id']
+
+    def process_state(self, state):
+        return state
