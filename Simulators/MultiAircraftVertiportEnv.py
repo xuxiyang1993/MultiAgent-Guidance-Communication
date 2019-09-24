@@ -521,3 +521,11 @@ class VertiPort:
     # add the clock counter by 1
     def step(self):
         self.clock_counter += 1
+
+
+class Controller:
+    def __init__(self):
+        self.position = np.array([400, 400])
+
+    def process_input(self, input):
+        return input
