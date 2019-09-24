@@ -3,12 +3,14 @@ import numpy as np
 import random
 import gym
 from gym import spaces
-from gym.utils import seeding
+# from gym.utils import seeding
 from collections import OrderedDict
 
 from config_vertiport import Config
 
 __author__ = "Xuxi Yang <xuxiyang@iastate.edu>"
+
+import ipdb
 
 
 class MultiAircraftEnv(gym.Env):
@@ -25,7 +27,7 @@ class MultiAircraftEnv(gym.Env):
     More specifically, the action is a dictionary in form {id: action, id: action, ...}
     """
 
-    def __init__(self, sd=2):
+    def __init__(self, sd=2, debug=False):
         self.load_config()  # load parameters for the simulator
         self.load_vertiport()  # load config for the vertiports
         self.state = None
@@ -38,14 +40,18 @@ class MultiAircraftEnv(gym.Env):
             high=np.array([self.window_width, self.window_height]),
             dtype=np.float32)  # position range is the length and width of airspace
         self.action_space = spaces.Tuple((spaces.Discrete(3),) * self.num_aircraft)
-        # action space deprecated, since number of aircraft is changing from time to time
+
+        self.total_timesteps = 0
 
         self.conflicts = 0
         self.seed(sd)
 
+        self.debug = debug
+
     def seed(self, seed=None):
         np.random.seed(seed)
-        self.np_random, seed = seeding.np_random(seed)
+        random.seed(seed)
+        # self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
     def load_config(self):
@@ -194,6 +200,8 @@ class MultiAircraftEnv(gym.Env):
         # return the reward, done, and info
         reward, terminal, info = self._terminal_reward()
 
+        self.total_timesteps += self.aircraft_dict.num_aircraft
+
         return self._get_ob(), reward, terminal, info
 
     def _terminal_reward(self):
@@ -223,20 +231,28 @@ class MultiAircraftEnv(gym.Env):
             conflict = False
             # set the conflict flag to false for aircraft
             # elif conflict, set penalty reward and conflict flag but do NOT remove the aircraft from list
-            for id, dist in zip(id_array, dist_array):
+            for id2, dist in zip(id_array, dist_array):
                 if dist >= self.minimum_separation:  # safe
-                    aircraft.conflict_id_set.discard(id)  # discarding element not in the set won't raise error
+                    aircraft.conflict_id_set.discard(id2)  # discarding element not in the set won't raise error
 
                 else:  # conflict!!
+                    if self.debug:
+                        self.render()
+                        import ipdb
+                        ipdb.set_trace()
                     conflict = True
-                    if id not in aircraft.conflict_id_set:
+                    if id2 not in aircraft.conflict_id_set:
                         self.conflicts += 1
-                        aircraft.conflict_id_set.add(id)
+                        aircraft.conflict_id_set.add(id2)
                         # info['c'].append('%d and %d' % (aircraft.id, id))
                     aircraft.reward = Config.conflict_penalty
 
             # if NMAC, set penalty reward and prepare to remove the aircraft from list
             if min_dist < self.NMAC_dist:
+                if self.debug:
+                    self.render()
+                    import ipdb
+                    ipdb.set_trace()
                 # info['n'].append('%d and %d' % (aircraft.id, close_id))
                 aircraft.reward = Config.NMAC_penalty
                 aircraft_to_remove.append(aircraft)
@@ -431,6 +447,10 @@ class Goal:
     def __init__(self, position):
         self.position = position
 
+    def __repr__(self):
+        s = 'pos: %s' % self.position
+        return s
+
 
 class Aircraft:
     def __init__(self, id, position, speed, heading, goal_pos):
@@ -457,18 +477,32 @@ class Aircraft:
         self.min_speed = Config.min_speed
         self.max_speed = Config.max_speed
         self.speed_sigma = Config.speed_sigma
-        self.position_sigma = Config.position_sigma
+        # self.position_sigma = Config.position_sigma
         self.d_heading = Config.d_heading
 
     def step(self, a=1):
         self.speed = max(self.min_speed, min(self.speed, self.max_speed))  # project to range
-        self.speed += np.random.normal(0, self.speed_sigma)  # uncertainty
-        self.heading += (a - 1) * self.d_heading  # change heading
+        self.speed += np.random.normal(0, self.speed_sigma)
+        self.heading += (a - 1) * self.d_heading + np.random.normal(0, Config.heading_sigma)
         vx = self.speed * math.cos(self.heading)
         vy = self.speed * math.sin(self.heading)
         self.velocity = np.array([vx, vy])
 
         self.position += self.velocity
+
+    def __repr__(self):
+        s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f, sub-goal: %.2f,%.2f' \
+            % (self.id,
+               self.position[0],
+               self.position[1],
+               self.speed,
+               math.degrees(self.heading),
+               self.goal.position[0],
+               self.goal.position[1],
+               self.sub_goal.position[0],
+               self.sub_goal.position[1]
+               )
+        return s
 
 
 class VertiPort:
