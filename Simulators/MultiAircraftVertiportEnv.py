@@ -555,8 +555,11 @@ class Controller:
         self.position = np.array([400, 400])
         self.env = env
         self.information_center = {'state': [], 'id': []}
+        self.enroute_aircraft_id = {}
+        self.information_center_last = {'state': [], 'id': []}
 
     def get_ob(self):
+
         self.information_center = {'state': [], 'id': []}
         for key, aircraft in self.env.aircraft_dict.ac_dict.items():
             aircraft.send_state_to(self.information_center['state'])
