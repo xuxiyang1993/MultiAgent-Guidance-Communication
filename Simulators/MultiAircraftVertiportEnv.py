@@ -358,7 +358,8 @@ class MultiAircraftEnv(gym.Env):
     def dist_goal(self, aircraft):
         return self.metric(aircraft.position, aircraft.goal.position)
 
-    def metric(self, pos1, pos2):
+    @staticmethod
+    def metric(pos1, pos2):
         # the distance between two points
         dx = pos1[0] - pos2[0]
         dy = pos1[1] - pos2[1]
@@ -542,8 +543,11 @@ class Aircraft:
     def send_id_to(self, lst):
         lst.append(self.id)
 
+    def dist_goal(self):
+        return MultiAircraftEnv.metric(self.goal.position, self.position)
+
     def __repr__(self):
-        s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f, sub-goal: %.2f,%.2f' \
+        s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f' \
             % (self.id,
                self.position[0],
                self.position[1],
@@ -551,8 +555,6 @@ class Aircraft:
                math.degrees(self.heading),
                self.goal.position[0],
                self.goal.position[1],
-               self.sub_goal.position[0],
-               self.sub_goal.position[1]
                )
         return s
 
