@@ -520,7 +520,8 @@ class Aircraft:
         # check probability of communication loss
         # has to be at least one step after take-off to have communication loss
         # for debugging, every 10 planes have one plane with loss
-        communication_loss = np.random.rand(1) > self.prob_lost and self.steps > 1 and self.id % 10 == 0
+        randdd = np.random.rand(1)
+        communication_loss = randdd < self.prob_lost and self.steps > 1 and self.id % 10 == 0
         if not communication_loss:
             self.communication_loss = False
             self.send_state_to(controller.information_center['state'])
