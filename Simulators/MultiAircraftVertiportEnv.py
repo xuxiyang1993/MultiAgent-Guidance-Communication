@@ -170,11 +170,16 @@ class MultiAircraftEnv(gym.Env):
         # a is a dictionary: {id: action, id: action, ...}
         # since MCTS is used every 5 seconds, there may be new aircraft generated during the 5 time step interval, which
         # MCTS algorithm doesn't generate an action for it. In this case we let it fly straight.
+        assigned_actions = a
         for id, aircraft in self.aircraft_dict.ac_dict.items():
             try:
                 aircraft.step(a[id])
             except KeyError:
                 aircraft.step()
+                assigned_actions[id] = 1
+
+        # record actions in the controller for predictions under communication loss
+        self.centralized_controller.collect_actions(assigned_actions)
 
         for vertiport in self.vertiport_list:
             vertiport.step()  # increase the clock of vertiport by 1
@@ -285,9 +290,14 @@ class MultiAircraftEnv(gym.Env):
             reward += aircraft.reward
 
         # remove all the out-of-map aircraft and goal-aircraft
+        removed_id = []
         for aircraft in aircraft_to_remove:
             self.aircraft_dict.remove(aircraft)
+            removed_id.append(aircraft.id)
         # reward = [e.reward for e in self.aircraft_dict]
+
+        # report removed aircraft to controller
+        self.centralized_controller.collect_removed(removed_id)
 
         # info_dist_list is the min_dist to other aircraft for each aircraft.
         return reward, False, info_dist_list
@@ -474,6 +484,10 @@ class Aircraft:
 
         self.conflict_id_set = set()  # store the id of all aircraft currently in conflict
 
+        self.communication_loss = False  # self awareness of communication loss
+        self.prob_lost = 0.9  # probability of communication loss
+        self.steps = 0  # prevent communication loss right after take-off
+
     def load_config(self):
         self.G = Config.G
         self.scale = Config.scale
@@ -494,6 +508,8 @@ class Aircraft:
 
         self.position += self.velocity
 
+        self.steps += 1
+
     def send_info_to(self, controller):
         dx = controller.position[0] - self.position[0]
         dy = controller.position[1] - self.position[1]
@@ -501,8 +517,16 @@ class Aircraft:
         power = dist
         self.power -= power
 
-        self.send_state_to(controller.information_center['state'])
-        self.send_id_to(controller.information_center['id'])
+        # check probability of communication loss
+        # has to be at least one step after take-off to have communication loss
+        # for debugging, every 10 planes have one plane with loss
+        communication_loss = np.random.rand(1) > self.prob_lost and self.steps > 1 and self.id % 10 == 0
+        if not communication_loss:
+            self.communication_loss = False
+            self.send_state_to(controller.information_center['state'])
+            self.send_id_to(controller.information_center['id'])
+        else:
+            self.communication_loss = True
 
     def send_state_to(self, lst):
         lst.append(self.position[0])
@@ -555,17 +579,57 @@ class Controller:
         self.position = np.array([400, 400])
         self.env = env
         self.information_center = {'state': [], 'id': []}
-        self.enroute_aircraft_id = {}
+        self.removed_aircraft_id = []
         self.information_center_last = {'state': [], 'id': []}
+        self.last_actions = {}
+
+        self.min_speed = Config.min_speed
+        self.max_speed = Config.max_speed
+        self.speed_sigma = Config.speed_sigma
+        self.d_heading = Config.d_heading
 
     def get_ob(self):
-
+        self.information_center_last = self.information_center
         self.information_center = {'state': [], 'id': []}
         for key, aircraft in self.env.aircraft_dict.ac_dict.items():
-            aircraft.send_state_to(self.information_center['state'])
-            aircraft.send_id_to(self.information_center['id'])
+            aircraft.send_info_to(self)
+
+        missing_aircraft = [aircraft for aircraft in self.information_center_last['id'] if aircraft not in
+                            self.information_center['id'] and aircraft not in self.removed_aircraft_id]
+
+        for aircraft_id in missing_aircraft:
+            self.default_step(aircraft_id)
 
         return self.process_state(np.reshape(self.information_center['state'], (-1, 8))), self.information_center['id']
 
     def process_state(self, state):
         return state
+
+    # get normally removed aircraft in situations such as goal, NMAC
+    def collect_removed(self, removed):
+        self.removed_aircraft_id = removed
+
+    # record previously assigned actions
+    def collect_actions(self, actions):
+        self.last_actions = actions
+
+    # fill missing id and state using previously assigned action
+    def default_step(self, aircraft_id):
+        last_state_idx = self.information_center_last['id'].index(aircraft_id) * 8
+        last_state = self.information_center_last['state'][last_state_idx: last_state_idx + 8]
+        predicted_state = self._step(last_state, self.last_actions[aircraft_id])
+        self.information_center['state'].extend(predicted_state)
+        self.information_center['id'].append(aircraft_id)
+
+    # based on aircraft class step method
+    # predict current location based on previously assigned action
+    def _step(self, last_state, action):
+        p_x, p_y, v_x, v_y, speed, heading, g_x, g_y = last_state
+        speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
+        speed += np.random.normal(0, self.speed_sigma)
+        heading += (action - 1) * self.d_heading + np.random.normal(0, Config.heading_sigma)
+        v_x = speed * math.cos(heading)
+        v_y = speed * math.sin(heading)
+        p_x += v_x
+        p_y += v_y
+        return [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y]
