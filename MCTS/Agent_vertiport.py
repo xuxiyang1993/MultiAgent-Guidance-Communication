@@ -27,7 +27,7 @@ def run_experiment(env, no_episodes, render, save_path):
         episode_time_step = 0
         episode_reward = 0
         last_observation, id_list = env.reset()
-        action = np.ones(num_aircraft)
+        action_by_id = {}
         info = None
         near_end = False
         counter = 0  # avoid end episode initially

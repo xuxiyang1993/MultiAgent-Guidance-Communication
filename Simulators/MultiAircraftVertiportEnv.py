@@ -198,7 +198,7 @@ class MultiAircraftEnv(gym.Env):
                 dist_array, id_array = self.dist_to_all_aircraft(aircraft)
                 min_dist = min(dist_array) if dist_array.shape[0] > 0 else 9999
                 # add it to dict only if it's far from others
-                if min_dist > 3 * self.minimum_separation:  # and self.aircraft_dict.num_aircraft < 10:
+                if min_dist > 5 * self.minimum_separation:  # and self.aircraft_dict.num_aircraft < 10:
                     self.aircraft_dict.add(aircraft)
                     self.id_tracker += 1  # increase id_tracker
 
@@ -331,6 +331,37 @@ class MultiAircraftEnv(gym.Env):
             self.viewer.onetime_geoms.append(goal_img)
 
         # draw all the vertiports
+        for veriport in self.vertiport_list:
+            vertiport_img = rendering.Image(os.path.join(__location__, 'images/verti.png'), 32, 32)
+            jtransform = rendering.Transform(rotation=0, translation=veriport.position)
+            vertiport_img.add_attr(jtransform)
+            self.viewer.onetime_geoms.append(vertiport_img)
+
+        for aircraft_id in self.centralized_controller.missing_aircraft:
+            point = self.viewer.draw_polygon(Config.point)
+            pos = self.centralized_controller.information_center[aircraft_id][:2]
+            jtransform = rendering.Transform(rotation=0, translation=pos)
+            point.add_attr(jtransform)
+            self.viewer.onetime_geoms.append(point)
+
+        return self.viewer.render(return_rgb_array=False)
+
+    def draw_point(self, point):
+        # for debug
+        from gym.envs.classic_control import rendering
+
+        if self.viewer is None:
+            self.viewer = rendering.Viewer(self.window_width, self.window_height)
+            self.viewer.set_bounds(0, self.window_width, 0, self.window_height)
+
+        img = self.viewer.draw_polygon(Config.point)
+        jtransform = rendering.Transform(rotation=0, translation=point)
+        img.add_attr(jtransform)
+        self.viewer.onetime_geoms.append(img)
+
+        import os
+        __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+
         for veriport in self.vertiport_list:
             vertiport_img = rendering.Image(os.path.join(__location__, 'images/verti.png'), 32, 32)
             jtransform = rendering.Transform(rotation=0, translation=veriport.position)
@@ -525,8 +556,18 @@ class Aircraft:
         communication_loss = randdd < self.prob_lost and self.steps > 1 and self.id % 10 == 0
         if not communication_loss:
             self.communication_loss = False
-            self.send_state_to(controller.information_center['state'])
-            self.send_id_to(controller.information_center['id'])
+            # self.send_state_to(controller.information_center['state'])
+            # self.send_id_to(controller.information_center['id'])
+            s = []
+            s.append(self.position[0])
+            s.append(self.position[1])
+            s.append(self.velocity[0])
+            s.append(self.velocity[1])
+            s.append(self.speed)
+            s.append(self.heading)
+            s.append(self.goal.position[0])
+            s.append(self.goal.position[1])
+            controller.information_center[self.id] = s
         else:
             self.communication_loss = True
 
@@ -581,9 +622,12 @@ class Controller:
     def __init__(self, env):
         self.position = np.array([400, 400])
         self.env = env
-        self.information_center = {'state': [], 'id': []}
+        # self.information_center = {'state': [], 'id': []}
+        # self.information_center_last = {'state': [], 'id': []}
+        self.information_center = {}
+        self.information_center_last = {}
         self.removed_aircraft_id = []
-        self.information_center_last = {'state': [], 'id': []}
+        self.missing_aircraft = []
         self.last_actions = {}
 
         self.min_speed = Config.min_speed
@@ -593,16 +637,23 @@ class Controller:
 
     def get_ob(self):
         self.information_center_last = self.information_center
-        self.information_center = {'state': [], 'id': []}
+        # self.information_center = {'state': [], 'id': []}
+        self.information_center = {}
         for key, aircraft in self.env.aircraft_dict.ac_dict.items():
             aircraft.send_info_to(self)
 
-        missing_aircraft = [aircraft for aircraft in self.information_center_last['id'] if aircraft not in
-                            self.information_center['id'] and aircraft not in self.removed_aircraft_id]
-
-        for aircraft_id in missing_aircraft:
+        self.missing_aircraft = [aircraft for aircraft in self.information_center_last.keys() if aircraft not in
+                                self.information_center.keys() and aircraft not in self.removed_aircraft_id]
+        # import ipdb; ipdb.set_trace()
+        for aircraft_id in self.missing_aircraft:
             self.default_step(aircraft_id)
 
+        state = []
+        for _, s in self.information_center.items():
+            state += s
+        # state = np.concatenate([s for _, s in self.information_center.items()])
+
+        return self.process_state(np.reshape(state, (-1, 8))), list(self.information_center.keys())
         return self.process_state(np.reshape(self.information_center['state'], (-1, 8))), self.information_center['id']
 
     def process_state(self, state):
@@ -617,20 +668,26 @@ class Controller:
         self.last_actions = actions
 
     # fill missing id and state using previously assigned action
+    # def default_step(self, aircraft_id):
+    #     last_state_idx = self.information_center_last['id'].index(aircraft_id) * 8
+    #     last_state = self.information_center_last['state'][last_state_idx: last_state_idx + 8]
+    #     predicted_state = self._step(last_state, self.last_actions[aircraft_id])
+    #     self.information_center['state'].extend(predicted_state)
+    #     self.information_center['id'].append(aircraft_id)
+
+    # fill missing id and state using previously assigned action
     def default_step(self, aircraft_id):
-        last_state_idx = self.information_center_last['id'].index(aircraft_id) * 8
-        last_state = self.information_center_last['state'][last_state_idx: last_state_idx + 8]
+        last_state = self.information_center_last[aircraft_id]
         predicted_state = self._step(last_state, self.last_actions[aircraft_id])
-        self.information_center['state'].extend(predicted_state)
-        self.information_center['id'].append(aircraft_id)
+        self.information_center[aircraft_id] = predicted_state
 
     # based on aircraft class step method
     # predict current location based on previously assigned action
     def _step(self, last_state, action):
         p_x, p_y, v_x, v_y, speed, heading, g_x, g_y = last_state
         speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
-        speed += np.random.normal(0, self.speed_sigma)
-        heading += (action - 1) * self.d_heading + np.random.normal(0, Config.heading_sigma)
+        # speed += np.random.normal(0, self.speed_sigma)
+        heading += (action - 1) * self.d_heading # + np.random.normal(0, Config.heading_sigma)
         v_x = speed * math.cos(heading)
         v_y = speed * math.sin(heading)
         p_x += v_x

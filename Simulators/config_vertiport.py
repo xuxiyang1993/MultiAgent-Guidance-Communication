@@ -36,7 +36,7 @@ class Config:
     min_speed = 50 / scale
     max_speed = 80 / scale
     d_speed = 0 / scale
-    speed_sigma = 2 / scale
+    speed_sigma = 5 / scale
     # position_sigma = 0 / scale
 
     # heading in rad TBD
@@ -60,6 +60,14 @@ class Config:
     step_penalty = -0.01
     goal_reward = 20
     sparse_reward = True
+
+    # point
+    point_len = 4
+    point = np.array([[-point_len, -point_len],
+                      [point_len, -point_len],
+                      [point_len, point_len],
+                      [-point_len, point_len],
+                      [-point_len, -point_len]])
 
     # vertiport parameter
     time_interval_lower = 60
