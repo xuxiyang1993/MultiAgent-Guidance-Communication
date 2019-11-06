@@ -239,7 +239,7 @@ class MultiAircraftEnv(gym.Env):
             # set the conflict flag to false for aircraft
             # elif conflict, set penalty reward and conflict flag but do NOT remove the aircraft from list
             for id2, dist in zip(id_array, dist_array):
-                if dist >= aircraft.minimum_separation:  # safe
+                if dist >= self.minimum_separation:  # safe
                     aircraft.conflict_id_set.discard(id2)  # discarding element not in the set won't raise error
 
                 else:  # conflict!!
@@ -248,7 +248,7 @@ class MultiAircraftEnv(gym.Env):
                         import ipdb
                         ipdb.set_trace()
                     conflict = True
-                    if id2 not in aircraft.conflict_id_set and dist < self.minimum_separation:  # use original min separation
+                    if id2 not in aircraft.conflict_id_set: # and dist < self.minimum_separation:  # use original min separation
                         self.conflicts += 1
                         aircraft.conflict_id_set.add(id2)
                         # info['c'].append('%d and %d' % (aircraft.id, id))
@@ -589,6 +589,7 @@ class Aircraft:
         lst.append(self.heading)
         lst.append(self.goal.position[0])
         lst.append(self.goal.position[1])
+        lst.append(self.minimum_separation)
 
     def send_id_to(self, lst):
         lst.append(self.id)
@@ -662,8 +663,8 @@ class Controller:
             state += s
         # state = np.concatenate([s for _, s in self.information_center.items()])
 
-        return self.process_state(np.reshape(state, (-1, 8))), list(self.information_center.keys())
-        return self.process_state(np.reshape(self.information_center['state'], (-1, 8))), self.information_center['id']
+        return self.process_state(np.reshape(state, (-1, 9))), list(self.information_center.keys())
+        return self.process_state(np.reshape(self.information_center['state'], (-1, 9))), self.information_center['id']
 
     def process_state(self, state):
         return state

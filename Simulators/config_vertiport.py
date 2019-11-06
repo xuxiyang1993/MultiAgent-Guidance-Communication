@@ -35,7 +35,7 @@ class Config:
     init_speed = 190 / 3.6 / scale
     min_speed = 45 / scale
     max_speed = 220 / 3.6 / scale
-    d_speed = 0 / scale
+    # d_speed = 0 / scale
     speed_sigma = 5 / scale
     # position_sigma = 0 / scale
 

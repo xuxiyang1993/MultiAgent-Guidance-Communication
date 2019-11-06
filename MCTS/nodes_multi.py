@@ -117,7 +117,7 @@ class MultiAircraftState(MCTSState):
             otherx = state[i][0]
             othery = state[i][1]
             dist = self.metric(ownx, owny, otherx, othery)
-            if dist < Config.minimum_separation:
+            if dist < max(self.minimum_separation, self.state[i][8]):
                 return True
         return False
 
@@ -155,15 +155,20 @@ class MultiAircraftState(MCTSState):
     def goaly(self):
         return self.state[self.index][7]
 
+    @property
+    def minimum_separation(self):
+        return self.state[self.index][8]
+
     def __repr__(self):
-        s = 'index: %d, prev action: %s, pos: %.2f,%.2f, goal: %.2f,%.2f, dist goal: %.2f, dist intruder: %f,' \
-            'nearest intruder: (%.2f, %.2f), depth: %d' \
+        s = 'index: %d, prev action: %s, pos: %.2f,%.2f, goal: %.2f,%.2f, min_sep:, %.2f, dist goal: %.2f,' \
+            'dist intruder: %f, nearest intruder: (%.2f, %.2f), depth: %d' \
             % (self.index,
                self.prev_action,
                self.ownx,
                self.owny,
                self.goalx,
                self.goaly,
+               self.minimum_separation,
                self.dist_goal(),
                self.dist_intruder(self.state, self.ownx, self.owny),
                self.nearest_x,
