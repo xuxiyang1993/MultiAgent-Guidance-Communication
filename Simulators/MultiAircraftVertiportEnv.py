@@ -573,6 +573,7 @@ class Aircraft:
             s.append(self.heading)
             s.append(self.goal.position[0])
             s.append(self.goal.position[1])
+            s.append(self.minimum_separation)
             controller.information_center[self.id] = s
         else:
             self.communication_loss = True
@@ -694,7 +695,8 @@ class Controller:
     # based on aircraft class step method
     # predict current location based on previously assigned action
     def _step(self, last_state, action):
-        p_x, p_y, v_x, v_y, speed, heading, g_x, g_y = last_state
+        # import ipdb; ipdb.set_trace()
+        p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq = last_state
         speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
         # speed += np.random.normal(0, self.speed_sigma)
         heading += (action - 1) * self.d_heading  # + np.random.normal(0, Config.heading_sigma)
@@ -702,4 +704,5 @@ class Controller:
         v_y = speed * math.sin(heading)
         p_x += v_x
         p_y += v_y
-        return [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y]
+        min_seq = min(2 * min_seq, 4)
+        return [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
