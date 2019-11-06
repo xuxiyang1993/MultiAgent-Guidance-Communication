@@ -234,13 +234,12 @@ class MultiAircraftEnv(gym.Env):
             dist_array, id_array = self.dist_to_all_aircraft(aircraft)
             min_dist = min(dist_array) if dist_array.shape[0] > 0 else 9999
             info_dist_list.append(min_dist)
-            dist_goal = self.dist_goal(aircraft)
 
             conflict = False
             # set the conflict flag to false for aircraft
             # elif conflict, set penalty reward and conflict flag but do NOT remove the aircraft from list
             for id2, dist in zip(id_array, dist_array):
-                if dist >= self.minimum_separation:  # safe
+                if dist >= aircraft.minimum_separation:  # safe
                     aircraft.conflict_id_set.discard(id2)  # discarding element not in the set won't raise error
 
                 else:  # conflict!!
@@ -249,7 +248,7 @@ class MultiAircraftEnv(gym.Env):
                         import ipdb
                         ipdb.set_trace()
                     conflict = True
-                    if id2 not in aircraft.conflict_id_set:
+                    if id2 not in aircraft.conflict_id_set and dist < self.minimum_separation:  # use original min separation
                         self.conflicts += 1
                         aircraft.conflict_id_set.add(id2)
                         # info['c'].append('%d and %d' % (aircraft.id, id))
@@ -275,7 +274,7 @@ class MultiAircraftEnv(gym.Env):
                     aircraft_to_remove.append(aircraft)
 
             # set goal-aircraft reward according to simulator, prepare to remove it
-            elif dist_goal < self.goal_radius:
+            elif aircraft.distance_goal < self.goal_radius:
                 aircraft.reward = Config.goal_reward
                 # info['g'].append(aircraft.id)
                 self.goals += 1
@@ -519,6 +518,10 @@ class Aircraft:
         self.communication_loss = False  # self awareness of communication loss
         self.prob_lost = 0.9  # probability of communication loss
         self.steps = 0  # prevent communication loss right after take-off
+        self.distance_goal = self.dist_goal()  # distance to goal
+
+        self.lost_steps = 0  # duration of the current loss
+        self.minimum_separation = Config.minimum_separation
 
     def load_config(self):
         self.G = Config.G
@@ -540,6 +543,7 @@ class Aircraft:
 
         self.position += self.velocity
 
+        self.distance_goal = self.dist_goal()
         self.steps += 1
 
     def send_info_to(self, controller):
@@ -553,8 +557,10 @@ class Aircraft:
         # has to be at least one step after take-off to have communication loss
         # for debugging, every 10 planes have one plane with loss
         randdd = np.random.rand(1)
-        communication_loss = randdd < self.prob_lost and self.steps > 1 and self.id % 10 == 0
-        if not communication_loss:
+        communication_loss = randdd < self.prob_lost and self.steps > 30 and self.id % 10 == 0
+        if not communication_loss or self.dist_goal() < 3 * Config.goal_radius:
+            self.lost_steps = 0
+            self.minimum_separation = Config.minimum_separation
             self.communication_loss = False
             # self.send_state_to(controller.information_center['state'])
             # self.send_id_to(controller.information_center['id'])
@@ -570,6 +576,9 @@ class Aircraft:
             controller.information_center[self.id] = s
         else:
             self.communication_loss = True
+            self.lost_steps += 1
+            self.minimum_separation = np.clip(np.exp(self.lost_steps), 1, 4) * Config.minimum_separation
+            # plus one avoid times a number less than 1
 
     def send_state_to(self, lst):
         lst.append(self.position[0])
@@ -643,7 +652,7 @@ class Controller:
             aircraft.send_info_to(self)
 
         self.missing_aircraft = [aircraft for aircraft in self.information_center_last.keys() if aircraft not in
-                                self.information_center.keys() and aircraft not in self.removed_aircraft_id]
+                                 self.information_center.keys() and aircraft not in self.removed_aircraft_id]
         # import ipdb; ipdb.set_trace()
         for aircraft_id in self.missing_aircraft:
             self.default_step(aircraft_id)
@@ -687,7 +696,7 @@ class Controller:
         p_x, p_y, v_x, v_y, speed, heading, g_x, g_y = last_state
         speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
         # speed += np.random.normal(0, self.speed_sigma)
-        heading += (action - 1) * self.d_heading # + np.random.normal(0, Config.heading_sigma)
+        heading += (action - 1) * self.d_heading  # + np.random.normal(0, Config.heading_sigma)
         v_x = speed * math.cos(heading)
         v_y = speed * math.sin(heading)
         p_x += v_x

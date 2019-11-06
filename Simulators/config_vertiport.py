@@ -25,16 +25,16 @@ class Config:
     scale = 60  # 1 pixel = 30 meters
 
     # distance param
-    minimum_separation = 555 / scale
+    minimum_separation = 926 / scale
     NMAC_dist = 150 / scale
     horizon_dist = 4000 / scale
     initial_min_dist = 3000 / scale
     goal_radius = 600 / scale
 
     # speed
-    init_speed = 60 / scale
-    min_speed = 50 / scale
-    max_speed = 80 / scale
+    init_speed = 190 / 3.6 / scale
+    min_speed = 45 / scale
+    max_speed = 220 / 3.6 / scale
     d_speed = 0 / scale
     speed_sigma = 5 / scale
     # position_sigma = 0 / scale
