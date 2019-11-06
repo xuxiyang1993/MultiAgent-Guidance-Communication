@@ -329,6 +329,11 @@ class MultiAircraftEnv(gym.Env):
             goal_img.set_color(r, g, b)
             self.viewer.onetime_geoms.append(goal_img)
 
+            circle_img = rendering.make_circle(radius=aircraft.minimum_separation / 2, res=30, filled=False)
+            jtransform = rendering.Transform(rotation=0, translation=aircraft.position)
+            circle_img.add_attr(jtransform)
+            self.viewer.onetime_geoms.append(circle_img)
+
         # draw all the vertiports
         for veriport in self.vertiport_list:
             vertiport_img = rendering.Image(os.path.join(__location__, 'images/verti.png'), 32, 32)

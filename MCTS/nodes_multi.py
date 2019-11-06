@@ -117,7 +117,7 @@ class MultiAircraftState(MCTSState):
             otherx = state[i][0]
             othery = state[i][1]
             dist = self.metric(ownx, owny, otherx, othery)
-            if dist < max(self.minimum_separation, self.state[i][8]):
+            if dist < (self.minimum_separation + self.state[i][8]) / 2:
                 return True
         return False
 
