@@ -562,8 +562,8 @@ class Aircraft:
         # has to be at least one step after take-off to have communication loss
         # for debugging, every 10 planes have one plane with loss
         randdd = np.random.rand(1)
-        communication_loss = randdd < self.prob_lost and self.steps > 30 and self.id % 10 == 0
-        if not communication_loss or self.dist_goal() < 3 * Config.goal_radius:
+        communication_loss = randdd < self.prob_lost and self.steps > 80 and self.id % 10 == 0
+        if not communication_loss or self.dist_goal() < 5 * Config.goal_radius:
             self.lost_steps = 0
             self.minimum_separation = Config.minimum_separation
             self.communication_loss = False
@@ -583,8 +583,7 @@ class Aircraft:
         else:
             self.communication_loss = True
             self.lost_steps += 1
-            self.minimum_separation = np.clip(np.exp(self.lost_steps), 1, 4) * Config.minimum_separation
-            # plus one avoid times a number less than 1
+            self.minimum_separation = np.clip(np.exp(self.lost_steps), 1.5, 3) * Config.minimum_separation
 
     def send_state_to(self, lst):
         lst.append(self.position[0])
@@ -644,6 +643,8 @@ class Controller:
         self.information_center_last = {}
         self.removed_aircraft_id = []
         self.missing_aircraft = []
+        self.missing_aircraft_last = []
+        self.missing_duration = {}
         self.last_actions = {}
 
         self.min_speed = Config.min_speed
@@ -653,6 +654,7 @@ class Controller:
 
     def get_ob(self):
         self.information_center_last = self.information_center
+        self.missing_aircraft_last = self.missing_aircraft
         # self.information_center = {'state': [], 'id': []}
         self.information_center = {}
         for key, aircraft in self.env.aircraft_dict.ac_dict.items():
@@ -660,6 +662,7 @@ class Controller:
 
         self.missing_aircraft = [aircraft for aircraft in self.information_center_last.keys() if aircraft not in
                                  self.information_center.keys() and aircraft not in self.removed_aircraft_id]
+        self.duration_update()
         # import ipdb; ipdb.set_trace()
         for aircraft_id in self.missing_aircraft:
             self.default_step(aircraft_id)
@@ -694,12 +697,12 @@ class Controller:
     # fill missing id and state using previously assigned action
     def default_step(self, aircraft_id):
         last_state = self.information_center_last[aircraft_id]
-        predicted_state = self._step(last_state, self.last_actions[aircraft_id])
+        predicted_state = self._step(last_state, self.last_actions[aircraft_id], aircraft_id)
         self.information_center[aircraft_id] = predicted_state
 
     # based on aircraft class step method
     # predict current location based on previously assigned action
-    def _step(self, last_state, action):
+    def _step(self, last_state, action, aircraft_id):
         # import ipdb; ipdb.set_trace()
         p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq = last_state
         speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
@@ -709,5 +712,22 @@ class Controller:
         v_y = speed * math.sin(heading)
         p_x += v_x
         p_y += v_y
-        min_seq = min(2 * min_seq, 4)
+        min_seq = np.clip(np.exp(self.missing_duration[aircraft_id]), 1.5, 3) * Config.minimum_separation
         return [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
+
+    # update duration for aircrafts
+    def duration_update(self):
+        last = set(self.missing_aircraft_last)
+        current = set(self.missing_aircraft)
+        removed = last - current
+        new = current - last
+        continued = last & current
+
+        for key in removed:
+            self.missing_duration.pop(key)
+
+        for key in continued:
+            self.missing_duration[key] += 1
+
+        for key in new:
+            self.missing_duration[key] = 1
