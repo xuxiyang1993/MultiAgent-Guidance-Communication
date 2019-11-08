@@ -712,7 +712,7 @@ class Controller:
         v_y = speed * math.sin(heading)
         p_x += v_x
         p_y += v_y
-        min_seq = np.clip(np.exp(self.missing_duration[aircraft_id]), 1.5, 3) * Config.minimum_separation
+        min_seq = np.clip(np.exp(self.missing_duration[aircraft_id] / 5), 1, 3) * Config.minimum_separation
         return [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
 
     # update duration for aircrafts
