@@ -54,7 +54,7 @@ class Config:
     simulate_frame = 10
 
     # reward setting
-    NMAC_penalty = -10
+    NMAC_penalty = -15
     conflict_penalty = -5
     wall_penalty = -5
     step_penalty = -0.01
