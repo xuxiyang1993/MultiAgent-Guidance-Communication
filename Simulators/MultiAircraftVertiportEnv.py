@@ -566,7 +566,10 @@ class Aircraft:
         communication_loss = randdd < self.prob_lost and self.steps > 80 and self.id % 10 == 0
         if not communication_loss or self.dist_goal() < 5 * Config.goal_radius:
             self.lost_steps = 0
-            self.minimum_separation = Config.minimum_separation if not self.loss_happened else 2 * Config.minimum_separation
+
+            # self.minimum_separation = Config.minimum_separation if not self.loss_happened else 2 * Config.minimum_separation
+            self.minimum_separation = Config.minimum_separation
+
             self.communication_loss = False
             # self.send_state_to(controller.information_center['state'])
             # self.send_id_to(controller.information_center['id'])
@@ -585,7 +588,9 @@ class Aircraft:
             self.communication_loss = True
             self.loss_happened = True
             self.lost_steps += 1
-            self.minimum_separation = np.clip(np.exp(self.lost_steps / 15) + 1, 2, 3.5) * Config.minimum_separation
+
+            # self.minimum_separation = np.clip(np.exp(self.lost_steps / 15) + 1, 2, 3.5) * Config.minimum_separation
+            self.minimum_separation = np.clip(np.exp(self.lost_steps / 30), 1, 3.5) * Config.minimum_separation
 
     def send_state_to(self, lst):
         lst.append(self.position[0])
@@ -714,7 +719,7 @@ class Controller:
         v_y = speed * math.sin(heading)
         p_x += v_x
         p_y += v_y
-        min_seq = np.clip(np.exp(self.missing_duration[aircraft_id] / 15) + 1, 2, 3.5) * Config.minimum_separation
+        min_seq = np.clip(np.exp(self.missing_duration[aircraft_id] / 30), 1, 3.5) * Config.minimum_separation
         return [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
 
     # update duration for aircrafts
