@@ -33,10 +33,10 @@ def run_experiment(env, no_episodes, render, save_path):
         counter = 0  # avoid end episode initially
 
         while not done:
-            if render or episode_time_step >= 36600:
+            if render:
                 env.render()
-                import ipdb
-                ipdb.set_trace()
+                # import ipdb
+                # ipdb.set_trace()
             # make decision every 5 time steps
             if episode_time_step % 5 == 0:
 
