@@ -6,6 +6,8 @@ from gym import spaces
 # from gym.utils import seeding
 from collections import OrderedDict
 
+from nodes_multi import MultiAircraftNode, MultiAircraftState
+from search_multi import MCTS
 from config_vertiport import Config
 
 __author__ = "Xuxi Yang <xuxiyang@iastate.edu>"
@@ -27,7 +29,7 @@ class MultiAircraftEnv(gym.Env):
     More specifically, the action is a dictionary in form {id: action, id: action, ...}
     """
 
-    def __init__(self, sd=2, debug=False):
+    def __init__(self, sd=2, debug=False, decentralized=False):
         self.load_config()  # load parameters for the simulator
         self.load_vertiport()  # load config for the vertiports
         self.state = None
@@ -47,6 +49,8 @@ class MultiAircraftEnv(gym.Env):
         self.seed(sd)
 
         self.centralized_controller = Controller(self)
+
+        self.decentralized = decentralized
 
         self.debug = debug
 
@@ -234,6 +238,7 @@ class MultiAircraftEnv(gym.Env):
             dist_array, id_array = self.dist_to_all_aircraft(aircraft)
             min_dist = min(dist_array) if dist_array.shape[0] > 0 else 9999
             info_dist_list.append(min_dist)
+            aircraft.min_dist = min_dist
 
             conflict = False
             # set the conflict flag to false for aircraft
@@ -248,7 +253,7 @@ class MultiAircraftEnv(gym.Env):
                         import ipdb
                         ipdb.set_trace()
                     conflict = True
-                    if id2 not in aircraft.conflict_id_set: # and dist < self.minimum_separation:  # use original min separation
+                    if id2 not in aircraft.conflict_id_set:  # and dist < self.minimum_separation:  # use original min separation
                         self.conflicts += 1
                         aircraft.conflict_id_set.add(id2)
                         # info['c'].append('%d and %d' % (aircraft.id, id))
@@ -529,6 +534,11 @@ class Aircraft:
         self.minimum_separation = Config.minimum_separation
         self.loss_happened = False
 
+        self.information_center = {}
+        self.min_dist = None
+        self.state = None
+        self.idx = None
+
     def load_config(self):
         self.G = Config.G
         self.scale = Config.scale
@@ -552,18 +562,19 @@ class Aircraft:
         self.distance_goal = self.dist_goal()
         self.steps += 1
 
-    def send_info_to(self, controller):
-        dx = controller.position[0] - self.position[0]
-        dy = controller.position[1] - self.position[1]
-        dist = math.sqrt(dx ** 2 + dy ** 2)
-        power = dist
-        self.power -= power
+    def send_info_to(self, controller=None, to_aircraft=False):
+        if not to_aircraft:
+            dx = controller.position[0] - self.position[0]
+            dy = controller.position[1] - self.position[1]
+            dist = math.sqrt(dx ** 2 + dy ** 2)
+            power = dist
+            self.power -= power
 
         # check probability of communication loss
         # has to be at least one step after take-off to have communication loss
         # for debugging, every 10 planes have one plane with loss
         randdd = np.random.rand(1)
-        communication_loss = randdd < self.prob_lost and self.steps > 80 and self.id % 10 == 0
+        communication_loss = randdd < self.prob_lost and self.steps > 80 and self.id % 10 == 0 and not to_aircraft
         if not communication_loss or self.dist_goal() < 5 * Config.goal_radius:
             self.lost_steps = 0
 
@@ -583,7 +594,12 @@ class Aircraft:
             s.append(self.goal.position[0])
             s.append(self.goal.position[1])
             s.append(self.minimum_separation)
-            controller.information_center[self.id] = s
+            if controller:
+                controller.information_center[self.id] = s
+
+            if to_aircraft:
+                return s
+
         else:
             self.communication_loss = True
             self.loss_happened = True
@@ -608,6 +624,31 @@ class Aircraft:
 
     def dist_goal(self):
         return MultiAircraftEnv.metric(self.goal.position, self.position)
+
+    def get_aircraft_info(self, ac_dict):
+        self.information_center = {}
+        for ac_id, aircraft in ac_dict.items():
+            self.information_center[ac_id] = aircraft.send_info_to(None, True)
+        state = []
+        for i, (ac_id, s) in enumerate(self.information_center.items()):
+            state += s
+            if ac_id == self.id:
+                self.idx = i
+        self.state = np.reshape(state, (-1, 9))
+        return self.information_center, self.state, self.idx
+
+    def make_decision(self, action, action_by_id):
+        state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
+        root = MultiAircraftNode(state=state)
+        mcts = MCTS(root)
+        # if aircraft if close to another aircraft, build a larger tree, else build smaller tree
+        if self.min_dist < 3 * Config.minimum_separation:
+            best_node = mcts.best_action(Config.no_simulations, Config.search_depth)
+        else:
+            best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)
+        action[self.idx] = best_node.state.prev_action[self.idx]
+        action_by_id[self.id] = best_node.state.prev_action[self.idx]
+        return action, action_by_id
 
     def __repr__(self):
         s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f' \
@@ -665,7 +706,7 @@ class Controller:
         # self.information_center = {'state': [], 'id': []}
         self.information_center = {}
         for key, aircraft in self.env.aircraft_dict.ac_dict.items():
-            aircraft.send_info_to(self)
+            aircraft.send_info_to(self, self.env.decentralized)
 
         self.missing_aircraft = [aircraft for aircraft in self.information_center_last.keys() if aircraft not in
                                  self.information_center.keys() and aircraft not in self.removed_aircraft_id]

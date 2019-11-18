@@ -1,17 +1,21 @@
 import argparse
 import numpy as np
 import time
+from concurrent.futures import ProcessPoolExecutor
 
 import sys
+
 sys.path.extend(['../Simulators'])
 from nodes_multi import MultiAircraftNode, MultiAircraftState
 from search_multi import MCTS
 from config_vertiport import Config
 from MultiAircraftVertiportEnv import MultiAircraftEnv
+
+
 # from testEnv import MultiAircraftEnv
 
 
-def run_experiment(env, no_episodes, render, save_path):
+def run_experiment(env, no_episodes, render, save_path, decentralized):
     text_file = open(save_path, "w")  # save all non-terminal print statements in a txt file
     episode = 0
     epi_returns = []
@@ -45,18 +49,35 @@ def run_experiment(env, no_episodes, render, save_path):
                 action = np.ones(num_existing_aircraft, dtype=np.int32)
                 action_by_id = {}
 
-                # make decision for each aircraft one by one
-                for index in range(num_existing_aircraft):
-                    state = MultiAircraftState(state=last_observation, index=index, init_action=action)
-                    root = MultiAircraftNode(state=state)
-                    mcts = MCTS(root)
-                    # if aircraft if close to another aircraft, build a larger tree, else build smaller tree
-                    if info[index] < 3 * Config.minimum_separation:
-                        best_node = mcts.best_action(Config.no_simulations, Config.search_depth)
-                    else:
-                        best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)
-                    action[index] = best_node.state.prev_action[index]
-                    action_by_id[id_list[index]] = best_node.state.prev_action[index]
+                # make decision for each aircraft one by one using centralized controller
+                if not decentralized or num_existing_aircraft == 0:
+                    for index in range(num_existing_aircraft):
+                        state = MultiAircraftState(state=last_observation, index=index, init_action=action)
+                        root = MultiAircraftNode(state=state)
+                        mcts = MCTS(root)
+                        # if aircraft if close to another aircraft, build a larger tree, else build smaller tree
+                        if info[index] < 3 * Config.minimum_separation:
+                            best_node = mcts.best_action(Config.no_simulations, Config.search_depth)
+                        else:
+                            best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)
+                        action[index] = best_node.state.prev_action[index]
+                        action_by_id[id_list[index]] = best_node.state.prev_action[index]
+                else:
+                    aircrafts = list(env.aircraft_dict.ac_dict.values())
+                    for i, ac in enumerate(aircrafts):
+                        current_ac = aircrafts[i]
+                        if i == 0:
+                            current_ac.information_center, current_ac.state, current_ac.idx \
+                                = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict)
+                            continue
+                        else:
+                            prev_ac = aircrafts[i - 1]
+                            with ProcessPoolExecutor(max_workers=2) as pool:
+                                decision = pool.submit(prev_ac.make_decision, action, action_by_id)
+                                status = pool.submit(current_ac.get_aircraft_info, env.aircraft_dict.ac_dict)
+                                action, action_by_id = decision.result()
+                                current_ac.information_center, current_ac.state, current_ac.idx = status.result()
+                    aircrafts[-1].make_decision(action, action_by_id)
 
                 time_after = int(round(time.time() * 1000))
                 if num_existing_aircraft in time_dict:
@@ -134,6 +155,7 @@ def main():
     parser.add_argument('--save_path', '-p', type=str, default='output/seed2.txt')
     parser.add_argument('--debug', '-d', action='store_true')
     parser.add_argument('--render', '-r', action='store_true')
+    parser.add_argument('--decentralized', '-dc', action='store_true')
     args = parser.parse_args()
 
     import random
@@ -141,8 +163,8 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
-    env = MultiAircraftEnv(args.seed, args.debug)
-    run_experiment(env, args.no_episodes, args.render, args.save_path)
+    env = MultiAircraftEnv(args.seed, args.debug, args.decentralized)
+    run_experiment(env, args.no_episodes, args.render, args.save_path, args.decentralized)
 
 
 if __name__ == '__main__':
