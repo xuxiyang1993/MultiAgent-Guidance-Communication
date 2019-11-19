@@ -535,7 +535,10 @@ class Aircraft:
         self.loss_happened = False
 
         self.information_center = {}
-        self.min_dist = None
+        self.min_dist = np.inf
+        self.min_dist_id = None
+        self.max_dist = -np.inf
+        self.max_dist_id = None
         self.state = None
         self.idx = None
 
@@ -625,8 +628,20 @@ class Aircraft:
     def dist_goal(self):
         return MultiAircraftEnv.metric(self.goal.position, self.position)
 
+    def dist_min_max(self, ac_dict):
+        for ac_id, aircraft in ac_dict.items():
+            if ac_id != self.id:
+                distance = MultiAircraftEnv.metric(self.position, aircraft.position)
+                if distance < self.min_dist:
+                    self.min_dist = distance
+                    self.min_dist_id = ac_id
+                if distance > self.max_dist:
+                    self.max_dist = distance
+                    self.max_dist = ac_id
+
     def get_aircraft_info(self, ac_dict):
         self.information_center = {}
+        self.dist_min_max(ac_dict)
         for ac_id, aircraft in ac_dict.items():
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
         state = []

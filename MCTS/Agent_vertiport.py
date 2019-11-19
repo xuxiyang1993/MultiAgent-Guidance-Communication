@@ -66,7 +66,7 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                     aircrafts = list(env.aircraft_dict.ac_dict.values())
                     for i, ac in enumerate(aircrafts):
                         current_ac = aircrafts[i]
-                        if i == 0:
+                        if i == 0:  # first iteration only collects information
                             current_ac.information_center, current_ac.state, current_ac.idx \
                                 = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict)
                             continue
@@ -77,7 +77,7 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                                 status = pool.submit(current_ac.get_aircraft_info, env.aircraft_dict.ac_dict)
                                 action, action_by_id = decision.result()
                                 current_ac.information_center, current_ac.state, current_ac.idx = status.result()
-                    aircrafts[-1].make_decision(action, action_by_id)
+                    aircrafts[-1].make_decision(action, action_by_id)  # deal with last aircraft's decision making
 
                 time_after = int(round(time.time() * 1000))
                 if num_existing_aircraft in time_dict:
