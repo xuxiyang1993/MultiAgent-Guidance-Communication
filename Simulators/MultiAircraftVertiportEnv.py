@@ -339,6 +339,13 @@ class MultiAircraftEnv(gym.Env):
             circle_img.add_attr(jtransform)
             self.viewer.onetime_geoms.append(circle_img)
 
+            if aircraft.communication_loss and self.decentralized:
+                point = self.viewer.draw_polygon(Config.point)
+                pos = aircraft.position
+                jtransform = rendering.Transform(rotation=0, translation=pos)
+                point.add_attr(jtransform)
+                self.viewer.onetime_geoms.append(point)
+
         # draw all the vertiports
         for veriport in self.vertiport_list:
             vertiport_img = rendering.Image(os.path.join(__location__, 'images/verti.png'), 32, 32)
@@ -585,7 +592,8 @@ class Aircraft:
             # self.minimum_separation = Config.minimum_separation if not self.loss_happened else 2 * Config.minimum_separation
             self.minimum_separation = Config.minimum_separation
 
-            self.communication_loss = False
+            if not to_aircraft:
+                self.communication_loss = False
             # self.send_state_to(controller.information_center['state'])
             # self.send_id_to(controller.information_center['id'])
             s = []
@@ -651,13 +659,15 @@ class Aircraft:
                 self.communication_loss = True
                 continue
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
+        if not self.miss_ids:
+            self.communication_loss = False
         state = []
         for i, (ac_id, s) in enumerate(self.information_center.items()):
             state += s
             if ac_id == self.id:
                 self.idx = i
         self.state = np.reshape(state, (-1, 9))
-        return self.information_center, self.state, self.idx, self.miss_ids
+        return self.information_center, self.state, self.idx, self.miss_ids, self.communication_loss
 
     def make_decision(self, action, action_by_id):
         state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
