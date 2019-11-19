@@ -64,19 +64,28 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                         action_by_id[id_list[index]] = best_node.state.prev_action[index]
                 else:
                     aircrafts = list(env.aircraft_dict.ac_dict.values())
+                    prev_ac_info_center = {}
                     for i, ac in enumerate(aircrafts):
                         current_ac = aircrafts[i]
                         if i == 0:  # first iteration only collects information
-                            current_ac.information_center, current_ac.state, current_ac.idx \
-                                = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict)
+                            current_ac.information_center, current_ac.state, current_ac.idx, current_ac.miss_ids \
+                                = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict, True)
+                            prev_ac_info_center = current_ac.information_center
                             continue
                         else:
                             prev_ac = aircrafts[i - 1]
+                            decision = None
+                            status = None
                             with ProcessPoolExecutor(max_workers=2) as pool:
                                 decision = pool.submit(prev_ac.make_decision, action, action_by_id)
                                 status = pool.submit(current_ac.get_aircraft_info, env.aircraft_dict.ac_dict)
-                                action, action_by_id = decision.result()
-                                current_ac.information_center, current_ac.state, current_ac.idx = status.result()
+                            action, action_by_id = decision.result()
+                            current_ac.information_center, current_ac.state, current_ac.idx, current_ac.miss_ids = status.result()
+                            for missing in current_ac.miss_ids:
+                                current_ac.information_center[missing] = prev_ac_info_center[missing]
+                                current_ac.state = np.vstack((current_ac.state, prev_ac_info_center[missing]))
+                            prev_ac_info_center = current_ac.information_center
+
                     aircrafts[-1].make_decision(action, action_by_id)  # deal with last aircraft's decision making
 
                 time_after = int(round(time.time() * 1000))

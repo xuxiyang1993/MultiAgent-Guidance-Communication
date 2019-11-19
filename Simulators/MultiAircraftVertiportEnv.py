@@ -541,6 +541,7 @@ class Aircraft:
         self.max_dist_id = None
         self.state = None
         self.idx = None
+        self.miss_ids = None
 
     def load_config(self):
         self.G = Config.G
@@ -637,12 +638,18 @@ class Aircraft:
                     self.min_dist_id = ac_id
                 if distance > self.max_dist:
                     self.max_dist = distance
-                    self.max_dist = ac_id
+                    self.max_dist_id = ac_id
 
-    def get_aircraft_info(self, ac_dict):
+    def get_aircraft_info(self, ac_dict, first=False):
+        # first plane to make decision can't have communication loss
+        self.miss_ids = []
         self.information_center = {}
         self.dist_min_max(ac_dict)
         for ac_id, aircraft in ac_dict.items():
+            if ac_id == self.max_dist_id and not first:
+                self.miss_ids.append(ac_id)
+                self.communication_loss = True
+                continue
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
         state = []
         for i, (ac_id, s) in enumerate(self.information_center.items()):
@@ -650,7 +657,7 @@ class Aircraft:
             if ac_id == self.id:
                 self.idx = i
         self.state = np.reshape(state, (-1, 9))
-        return self.information_center, self.state, self.idx
+        return self.information_center, self.state, self.idx, self.miss_ids
 
     def make_decision(self, action, action_by_id):
         state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
