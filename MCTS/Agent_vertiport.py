@@ -64,7 +64,6 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                         action_by_id[id_list[index]] = best_node.state.prev_action[index]
                 else:
                     aircrafts = list(env.aircraft_dict.ac_dict.values())
-                    aircrafts[-1], aircrafts[0] = aircrafts[0], aircrafts[-1]  # switch first plane with last plane
                     prev_ac_info_center = {}
                     for i, ac in enumerate(aircrafts):
                         current_ac = aircrafts[i]
