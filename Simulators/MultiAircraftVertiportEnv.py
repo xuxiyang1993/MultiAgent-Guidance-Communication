@@ -544,12 +544,14 @@ class Aircraft:
         self.loss_happened = False
 
         self.information_center = {}
+        self.information_center_last = {}
         self.min_dist = np.inf
         self.min_dist_id = None
         self.max_dist = -np.inf
         self.max_dist_id = None
         self.state = None
         self.idx = None
+        self.possible_miss = []
         self.miss_ids = []
         self.miss_idx = []
 
@@ -640,7 +642,7 @@ class Aircraft:
     def dist_goal(self):
         return MultiAircraftEnv.metric(self.goal.position, self.position)
 
-    def dist_min_max(self, ac_dict):
+    def dist_min_max(self, ac_dict, first=False):
         for ac_id, aircraft in ac_dict.items():
             if ac_id != self.id:
                 distance = MultiAircraftEnv.metric(self.position, aircraft.position)
@@ -650,33 +652,55 @@ class Aircraft:
                 if distance > self.max_dist:
                     self.max_dist = distance
                     self.max_dist_id = ac_id
+                if distance > 8 * Config.minimum_separation and len(self.possible_miss) < 2:
+                    rd = np.random.rand(1)
+                    if rd < 0.25:  # 25% chance adding possible loss
+                        if first and ac_id in self.information_center_last:
+                            self.possible_miss.append(ac_id)
+                        elif ac_id in self.information_center:
+                            self.possible_miss.append(ac_id)
 
-    def get_aircraft_info(self, ac_dict, first=False):
+    def get_aircraft_info(self, ac_dict, first=False, action=None, action_by_id=None):
         # first plane to make decision can't have communication loss
         self.miss_ids = []
         self.miss_idx = []
+        self.information_center_last = self.information_center
         self.information_center = {}
-        self.dist_min_max(ac_dict)
+        self.dist_min_max(ac_dict, first)
         state = []
 
         for i, (ac_id, aircraft) in enumerate(ac_dict.items()):
-            if ac_id == self.id:
-                self.idx = i
-            if ac_id == self.max_dist_id and not first:
+            aircraft.idx = i
+            rd = np.random.rand(1)
+            if ac_id in self.possible_miss and rd < 1/3 and self.id % 8 == 0:  # 1/3 loss rate, every 8 plane
                 self.miss_ids.append(ac_id)
                 self.miss_idx.append(i)
-                state += [0] * 9
                 self.communication_loss = True
+                if first:
+                    predicted = self.default_step(ac_id, action[aircraft.idx])  # assume move straight
+                    state += predicted
+                else:
+                    state += [0] * 9
                 continue
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
             state += self.information_center[ac_id]
+
+        if first:  # in first iteration, every aircraft move to toward goal
+            for ac in ac_dict.values():
+                a = self.move_toward_goal(ac)
+                action[ac.idx] = a
+                action_by_id[ac.id] = a
 
         if not self.miss_ids:
             self.communication_loss = False
 
         self.state = np.reshape(state, (-1, 9))
         assert self.idx is not None
-        return self
+
+        if first:
+            return self, action, action_by_id
+        else:
+            return self
 
     def make_decision(self, action, action_by_id):
         state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
@@ -691,10 +715,11 @@ class Aircraft:
         action_by_id[self.id] = best_node.state.prev_action[self.idx]
         return action, action_by_id
 
-    def move_toward_goal(self):
-        dx, dy = self.goal.position - self.position
+    @staticmethod
+    def move_toward_goal(aircraft):
+        dx, dy = aircraft.goal.position - aircraft.position
         goal_heading = math.atan2(dy, dx)
-        adjust_angle = self.heading - goal_heading
+        adjust_angle = aircraft.heading - goal_heading
         if -0.06 <= adjust_angle <= 0.06:  # within five degrees no adjustment
             action = 1
         elif 0 <= adjust_angle <= math.pi:
@@ -702,6 +727,21 @@ class Aircraft:
         else:
             action = 2
         return action
+
+    def default_step(self, aircraft_id, action):
+        last_state = self.information_center_last[aircraft_id]
+        p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq = last_state
+        speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
+        # speed += np.random.normal(0, self.speed_sigma)
+        heading += (action - 1) * self.d_heading  # + np.random.normal(0, Config.heading_sigma)
+        v_x = speed * math.cos(heading)
+        v_y = speed * math.sin(heading)
+        p_x += v_x
+        p_y += v_y
+        min_seq = 3 * Config.minimum_separation
+        predicted_state = [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
+        self.information_center[aircraft_id] = predicted_state
+        return predicted_state
 
     def __repr__(self):
         s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f' \

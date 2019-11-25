@@ -64,17 +64,26 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                         action_by_id[id_list[index]] = best_node.state.prev_action[index]
                 else:
                     aircrafts = list(env.aircraft_dict.ac_dict.values())
+                    ac_ids = list(env.aircraft_dict.ac_dict.keys())
+                    aircrafts[-1], aircrafts[0] = aircrafts[0], aircrafts[-1]
+                    env.aircraft_dict.ac_dict.move_to_end(ac_ids[-1], last=False)
+                    env.aircraft_dict.ac_dict.move_to_end(ac_ids[0])
                     prev_ac_info_center = {}
+                    skip_ids = []  # skip lost aircraft for collecting info and making decisions
                     for i, ac in enumerate(aircrafts):
                         current_ac = aircrafts[i]
-                        if i == 0:  # first iteration only collects information
-                            current_ac = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict, True)
+                        if i == 0:  # first iteration collects information and assigns initial action
+                            # in first iteration, every aircraft move to toward goal
+                            current_ac, action, action_by_id = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict,
+                                                                                            True, action, action_by_id)
                             aircrafts[i] = current_ac
                             env.aircraft_dict.ac_dict[current_ac.id] = current_ac
                             prev_ac_info_center = current_ac.information_center
+                            prev_ac = current_ac
                             continue
                         else:
-                            prev_ac = aircrafts[i - 1]
+                            if i in skip_ids:  # skip lost aircraft
+                                continue
                             with ProcessPoolExecutor(max_workers=2) as pool:
                                 decision = pool.submit(prev_ac.make_decision, action, action_by_id)
                                 status = pool.submit(current_ac.get_aircraft_info, env.aircraft_dict.ac_dict)
@@ -85,9 +94,12 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                             for (missing, j) in zip(current_ac.miss_ids, current_ac.miss_idx):
                                 current_ac.information_center[missing] = prev_ac_info_center[missing]
                                 current_ac.state[j] = prev_ac.state[j]
+                            skip_ids = current_ac.miss_ids
+                            prev_ac = current_ac
 
-                            assert np.array_equal(current_ac.information_center[current_ac.id], current_ac.state[current_ac.idx])
+                            assert len(prev_ac_info_center) == num_existing_aircraft
                             assert len(current_ac.information_center) == len(prev_ac_info_center)
+                            assert np.array_equal(current_ac.information_center[current_ac.id], current_ac.state[current_ac.idx])
                             assert current_ac.state.shape == prev_ac.state.shape
 
                             prev_ac_info_center = current_ac.information_center
