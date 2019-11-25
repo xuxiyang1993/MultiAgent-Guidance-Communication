@@ -1,4 +1,6 @@
 import math
+import time
+
 import numpy as np
 import random
 import gym
@@ -248,10 +250,10 @@ class MultiAircraftEnv(gym.Env):
                     aircraft.conflict_id_set.discard(id2)  # discarding element not in the set won't raise error
 
                 else:  # conflict!!
-                    if self.debug:
-                        self.render()
-                        import ipdb
-                        ipdb.set_trace()
+                    # if self.debug:
+                        # self.render()
+                        # import ipdb
+                        # ipdb.set_trace()
                     conflict = True
                     if id2 not in aircraft.conflict_id_set:  # and dist < self.minimum_separation:  # use original min separation
                         self.conflicts += 1
@@ -548,7 +550,8 @@ class Aircraft:
         self.max_dist_id = None
         self.state = None
         self.idx = None
-        self.miss_ids = None
+        self.miss_ids = []
+        self.miss_idx = []
 
     def load_config(self):
         self.G = Config.G
@@ -651,23 +654,29 @@ class Aircraft:
     def get_aircraft_info(self, ac_dict, first=False):
         # first plane to make decision can't have communication loss
         self.miss_ids = []
+        self.miss_idx = []
         self.information_center = {}
         self.dist_min_max(ac_dict)
-        for ac_id, aircraft in ac_dict.items():
+        state = []
+
+        for i, (ac_id, aircraft) in enumerate(ac_dict.items()):
+            if ac_id == self.id:
+                self.idx = i
             if ac_id == self.max_dist_id and not first:
                 self.miss_ids.append(ac_id)
+                self.miss_idx.append(i)
+                state += [0] * 9
                 self.communication_loss = True
                 continue
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
+            state += self.information_center[ac_id]
+
         if not self.miss_ids:
             self.communication_loss = False
-        state = []
-        for i, (ac_id, s) in enumerate(self.information_center.items()):
-            state += s
-            if ac_id == self.id:
-                self.idx = i
+
         self.state = np.reshape(state, (-1, 9))
-        return self.information_center, self.state, self.idx, self.miss_ids, self.communication_loss
+        assert self.idx is not None
+        return self
 
     def make_decision(self, action, action_by_id):
         state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
@@ -681,6 +690,18 @@ class Aircraft:
         action[self.idx] = best_node.state.prev_action[self.idx]
         action_by_id[self.id] = best_node.state.prev_action[self.idx]
         return action, action_by_id
+
+    def move_toward_goal(self):
+        dx, dy = self.goal.position - self.position
+        goal_heading = math.atan2(dy, dx)
+        adjust_angle = self.heading - goal_heading
+        if -0.06 <= adjust_angle <= 0.06:  # within five degrees no adjustment
+            action = 1
+        elif 0 <= adjust_angle <= math.pi:
+            action = 0
+        else:
+            action = 2
+        return action
 
     def __repr__(self):
         s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f' \
