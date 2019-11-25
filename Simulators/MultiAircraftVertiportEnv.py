@@ -652,9 +652,14 @@ class Aircraft:
                 if distance > self.max_dist:
                     self.max_dist = distance
                     self.max_dist_id = ac_id
-                if distance > 8 * Config.minimum_separation and len(self.possible_miss) < 2:
-                    rd = np.random.rand(1)
-                    if rd < 0.25:  # 25% chance adding possible loss
+                if distance > 8 * Config.minimum_separation and len(self.possible_miss) < 3:
+                    too_close = []
+                    for miss_id in self.possible_miss:
+                        close = MultiAircraftEnv.metric(aircraft.position, ac_dict[miss_id].position) < 2 * Config.minimum_separation
+                        too_close.append(close)
+                    if any(too_close):
+                        continue
+                    else:
                         if first and ac_id in self.information_center_last:
                             self.possible_miss.append(ac_id)
                         elif ac_id in self.information_center:
@@ -738,7 +743,7 @@ class Aircraft:
         v_y = speed * math.sin(heading)
         p_x += v_x
         p_y += v_y
-        min_seq = 3 * Config.minimum_separation
+        min_seq = Config.minimum_separation
         predicted_state = [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
         self.information_center[aircraft_id] = predicted_state
         return predicted_state
