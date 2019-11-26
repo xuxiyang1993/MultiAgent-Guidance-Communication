@@ -545,6 +545,8 @@ class Aircraft:
 
         self.information_center = {}
         self.action_center = {}
+        self.action = 1
+        self.visible_aircraft = OrderedDict()
         self.min_dist = np.inf
         self.min_dist_id = None
         self.state = None
@@ -692,7 +694,7 @@ class Aircraft:
                 if distance < self.min_dist:
                     self.min_dist = distance
                     self.min_dist_id = ac_id
-                prob_loss = np.clip(distance / (10 * Config.minimum_separation) - 1, 0, 0.5)
+                prob_loss = np.clip(distance / (15 * Config.minimum_separation) - 1, 0, 0.5)
                 rn = np.random.rand(1)
                 if prob_loss < rn and len(self.miss_ids) < 3:
                     self.miss_ids.append(ac_id)
@@ -703,25 +705,29 @@ class Aircraft:
         self.dist_min_max(ac_dict)
         state = []
         ac_copy = ac_dict.copy()
-        if self.id % 8 == 0:
-            self.communication_loss = True
-            for lost in self.miss_ids:
-                self.miss_ac.append(ac_copy.pop(lost))
+        for lost in self.miss_ids:
+            self.miss_ac.append(ac_copy.pop(lost))
+        self.visible_aircraft = ac_copy
 
         for i, (ac_id, aircraft) in enumerate(ac_copy.items()):
-            aircraft.idx = i
+            if ac_id == self.id:
+                self.idx = i
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
             state += self.information_center[ac_id]
 
-        if not self.miss_ids:
-            self.communication_loss = False
-
         self.state = np.reshape(state, (-1, 9))
         assert self.idx is not None
-
         return self
 
-    def make_decision(self, action, action_by_id):
+    def make_decision(self):
+        self.action = None
+        action = []
+        for ac_id, aircraft in self.visible_aircraft.items():
+            try:
+                action.append(self.action_center[ac_id])
+            except KeyError:
+                action.append(1)
+
         state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
         root = MultiAircraftNode(state=state)
         mcts = MCTS(root)
@@ -730,9 +736,14 @@ class Aircraft:
             best_node = mcts.best_action(Config.no_simulations, Config.search_depth)
         else:
             best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)
-        action[self.idx] = best_node.state.prev_action[self.idx]
-        action_by_id[self.id] = best_node.state.prev_action[self.idx]
-        return action, action_by_id
+        self.action = best_node.state.prev_action[self.idx]
+        assert self.action is not None
+        return self
+
+    def broadcast_action(self, ac_dict):
+        for ac_id in self.visible_aircraft.keys():
+            ac_dict[ac_id].action_center[self.id] = self.action
+        return ac_dict
 
     @staticmethod
     def move_toward_goal(aircraft):
@@ -747,20 +758,20 @@ class Aircraft:
             action = 2
         return action
 
-    def default_step(self, aircraft_id, action):
-        last_state = self.information_center_last[aircraft_id]
-        p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq = last_state
-        speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
-        # speed += np.random.normal(0, self.speed_sigma)
-        heading += (action - 1) * self.d_heading  # + np.random.normal(0, Config.heading_sigma)
-        v_x = speed * math.cos(heading)
-        v_y = speed * math.sin(heading)
-        p_x += v_x
-        p_y += v_y
-        min_seq = Config.minimum_separation
-        predicted_state = [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
-        self.information_center[aircraft_id] = predicted_state
-        return predicted_state
+    # def default_step(self, aircraft_id, action):
+    #     last_state = self.information_center_last[aircraft_id]
+    #     p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq = last_state
+    #     speed = max(self.min_speed, min(speed, self.max_speed))  # project to range
+    #     # speed += np.random.normal(0, self.speed_sigma)
+    #     heading += (action - 1) * self.d_heading  # + np.random.normal(0, Config.heading_sigma)
+    #     v_x = speed * math.cos(heading)
+    #     v_y = speed * math.sin(heading)
+    #     p_x += v_x
+    #     p_y += v_y
+    #     min_seq = Config.minimum_separation
+    #     predicted_state = [p_x, p_y, v_x, v_y, speed, heading, g_x, g_y, min_seq]
+    #     self.information_center[aircraft_id] = predicted_state
+    #     return predicted_state
 
     def __repr__(self):
         s = 'id: %d, pos: %.2f,%.2f, speed: %.2f, heading: %.2f goal: %.2f,%.2f' \

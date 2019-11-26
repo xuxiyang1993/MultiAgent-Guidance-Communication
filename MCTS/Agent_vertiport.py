@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import sys
 
@@ -13,7 +14,6 @@ from MultiAircraftVertiportEnv import MultiAircraftEnv
 
 
 # from testEnv import MultiAircraftEnv
-
 
 def run_experiment(env, no_episodes, render, save_path, decentralized):
     text_file = open(save_path, "w")  # save all non-terminal print statements in a txt file
@@ -62,31 +62,55 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                             best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)
                         action[index] = best_node.state.prev_action[index]
                         action_by_id[id_list[index]] = best_node.state.prev_action[index]
+
                 else:
-                    aircrafts = list(env.aircraft_dict.ac_dict.values())
                     # ac_ids = list(env.aircraft_dict.ac_dict.keys())
                     # aircrafts[-1], aircrafts[0] = aircrafts[0], aircrafts[-1]
                     # env.aircraft_dict.ac_dict.move_to_end(ac_ids[-1], last=False)
                     # env.aircraft_dict.ac_dict.move_to_end(ac_ids[0])
-                    for i, ac in enumerate(aircrafts):
-                        current_ac = aircrafts[i]
-                        if i == 0:  # first iteration collects information
+                    lost = False
+                    i = 0
+                    for ac_id, ac in env.aircraft_dict.ac_dict.items():
+                        current_ac = ac
+                        if lost or i == 0:
                             current_ac = current_ac.get_aircraft_info(env.aircraft_dict.ac_dict)
-                            aircrafts[i] = current_ac
                             env.aircraft_dict.ac_dict[current_ac.id] = current_ac
+                            prev_ac = current_ac
+                            i += 1
+                            lost = False
                             continue
                         else:
-                            prev_ac = aircrafts[i - 1]
-                            with ProcessPoolExecutor(max_workers=2) as pool:
-                                decision = pool.submit(prev_ac.make_decision, action, action_by_id)
+                            with ThreadPoolExecutor(max_workers=2) as pool:
+                                decision = pool.submit(prev_ac.make_decision)
                                 status = pool.submit(current_ac.get_aircraft_info, env.aircraft_dict.ac_dict)
-                            action, action_by_id = decision.result()
+                            prev_ac = decision.result()
                             current_ac = status.result()
+                            env.aircraft_dict.ac_dict[prev_ac.id] = prev_ac
                             env.aircraft_dict.ac_dict[current_ac.id] = current_ac
-                            aircrafts[i] = current_ac
 
-                    action, action_by_id = aircrafts[-1].make_decision(action,
-                                                                       action_by_id)  # deal with last aircraft's decision making
+                        if current_ac.id not in prev_ac.miss_ids:  # no loss
+                            prev_ac.broadcast_action(env.aircraft_dict.ac_dict)
+                            lost = False
+                        else:
+                            with ThreadPoolExecutor(max_workers=2) as pool:
+                                broadcast = pool.submit(prev_ac.broadcast_action, env.aircraft_dict.ac_dict)
+                                decision = pool.submit(current_ac.make_decision)
+                            env.aircraft_dict.ac_dict = broadcast.result()
+                            env.aircraft_dict.ac_dict[current_ac.id] = decision.result()
+                            current_ac.broadcast_action(env.aircraft_dict.ac_dict)
+                            lost = True
+                        prev_ac = current_ac
+
+                    last_aircraft = list(env.aircraft_dict.ac_dict.values())[-1].make_decision()
+                    env.aircraft_dict.ac_dict[last_aircraft.id] = last_aircraft
+                    action_by_id = {}
+                    for ac in env.aircraft_dict.ac_dict.values():
+                        # if ac.action is None:
+                        #     print(env.aircraft_dict.ac_dict)
+                        #     print(ac.id)
+                        action_by_id[ac.id] = ac.action
+
+                    assert len(action_by_id) == num_existing_aircraft
                     # for air in env.aircraft_dict.ac_dict.values():
                     #     try:
                     #         assert action[air.idx] == action_by_id[air.id]
