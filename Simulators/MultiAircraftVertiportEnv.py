@@ -535,7 +535,7 @@ class Aircraft:
         self.conflict_id_set = set()  # store the id of all aircraft currently in conflict
 
         self.communication_loss = False  # self awareness of communication loss
-        self.prob_lost = 0.9  # probability of communication loss
+        self.prob_lost = 0.1  # probability of communication loss
         self.steps = 0  # prevent communication loss right after take-off
         self.distance_goal = self.dist_goal()  # distance to goal
 
@@ -589,42 +589,87 @@ class Aircraft:
         # check probability of communication loss
         # has to be at least one step after take-off to have communication loss
         # for debugging, every 10 planes have one plane with loss
-        randdd = np.random.rand(1)
-        communication_loss = randdd < self.prob_lost and self.steps > 80 and self.id % 10 == 0 and not to_aircraft
-        if not communication_loss or self.dist_goal() < 5 * Config.goal_radius:
-            self.lost_steps = 0
 
-            # self.minimum_separation = Config.minimum_separation if not self.loss_happened else 2 * Config.minimum_separation
-            self.minimum_separation = Config.minimum_separation
+        # communication_loss = randdd < self.prob_lost and self.steps > 80 and not to_aircraft
+        if not self.communication_loss:
 
-            if not to_aircraft:
-                self.communication_loss = False
-            # self.send_state_to(controller.information_center['state'])
-            # self.send_id_to(controller.information_center['id'])
-            s = []
-            s.append(self.position[0])
-            s.append(self.position[1])
-            s.append(self.velocity[0])
-            s.append(self.velocity[1])
-            s.append(self.speed)
-            s.append(self.heading)
-            s.append(self.goal.position[0])
-            s.append(self.goal.position[1])
-            s.append(self.minimum_separation)
-            if controller:
-                controller.information_center[self.id] = s
+            randdd = np.random.rand(1)
+            if self.steps > 80 and not to_aircraft and self.dist_goal() < 5 * Config.goal_radius and randdd < self.prob_lost:
+                self.steps_to_lost = np.random.uniform(2, 10)
 
-            if to_aircraft:
-                return s
+                self.communication_loss = True
+                self.loss_happened = True
+                self.lost_steps += 1
 
-        else:
-            self.communication_loss = True
+                self.minimum_separation = Config.minimum_separation + 0.21 * self.lost_steps
+
+            else:
+                self.lost_steps = 0
+                self.minimum_separation = Config.minimum_separation
+
+                if not to_aircraft:
+                    self.communication_loss = False
+
+                s = []
+                s.append(self.position[0])
+                s.append(self.position[1])
+                s.append(self.velocity[0])
+                s.append(self.velocity[1])
+                s.append(self.speed)
+                s.append(self.heading)
+                s.append(self.goal.position[0])
+                s.append(self.goal.position[1])
+                s.append(self.minimum_separation)
+                if controller:
+                    controller.information_center[self.id] = s
+
+                if to_aircraft:
+                    return s
+
+        elif self.communication_loss:
             self.loss_happened = True
             self.lost_steps += 1
 
-            # self.minimum_separation = np.clip(np.exp(self.lost_steps / 15) + 1, 2, 3.5) * Config.minimum_separation
-            # self.minimum_separation = np.clip(np.exp(self.lost_steps / 30), 1, 2) * Config.minimum_separation
             self.minimum_separation = Config.minimum_separation + 0.21 * self.lost_steps
+
+            if self.lost_steps >= self.steps_to_lost:
+                self.communication_loss = False
+                self.lost_steps = 0
+
+        # if not communication_loss or self.dist_goal() < 5 * Config.goal_radius:
+        #     self.lost_steps = 0
+        #
+        #     # self.minimum_separation = Config.minimum_separation if not self.loss_happened else 2 * Config.minimum_separation
+        #     self.minimum_separation = Config.minimum_separation
+        #
+        #     if not to_aircraft:
+        #         self.communication_loss = False
+        #     # self.send_state_to(controller.information_center['state'])
+        #     # self.send_id_to(controller.information_center['id'])
+        #     s = []
+        #     s.append(self.position[0])
+        #     s.append(self.position[1])
+        #     s.append(self.velocity[0])
+        #     s.append(self.velocity[1])
+        #     s.append(self.speed)
+        #     s.append(self.heading)
+        #     s.append(self.goal.position[0])
+        #     s.append(self.goal.position[1])
+        #     s.append(self.minimum_separation)
+        #     if controller:
+        #         controller.information_center[self.id] = s
+        #
+        #     if to_aircraft:
+        #         return s
+        #
+        # else:
+        #     self.communication_loss = True
+        #     self.loss_happened = True
+        #     self.lost_steps += 1
+        #
+        #     # self.minimum_separation = np.clip(np.exp(self.lost_steps / 15) + 1, 2, 3.5) * Config.minimum_separation
+        #     # self.minimum_separation = np.clip(np.exp(self.lost_steps / 30), 1, 2) * Config.minimum_separation
+        #     self.minimum_separation = Config.minimum_separation + 0.21 * self.lost_steps
 
     def send_state_to(self, lst):
         lst.append(self.position[0])
