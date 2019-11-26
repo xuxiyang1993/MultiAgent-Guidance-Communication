@@ -544,16 +544,13 @@ class Aircraft:
         self.loss_happened = False
 
         self.information_center = {}
-        self.information_center_last = {}
+        self.action_center = {}
         self.min_dist = np.inf
         self.min_dist_id = None
-        self.max_dist = -np.inf
-        self.max_dist_id = None
         self.state = None
         self.idx = None
-        self.possible_miss = []
         self.miss_ids = []
-        self.miss_idx = []
+        self.miss_ac = []
 
     def load_config(self):
         self.G = Config.G
@@ -643,59 +640,33 @@ class Aircraft:
     def dist_goal(self):
         return MultiAircraftEnv.metric(self.goal.position, self.position)
 
-    def dist_min_max(self, ac_dict, first=False):
+    def dist_min_max(self, ac_dict):
         for ac_id, aircraft in ac_dict.items():
             if ac_id != self.id:
                 distance = MultiAircraftEnv.metric(self.position, aircraft.position)
                 if distance < self.min_dist:
                     self.min_dist = distance
                     self.min_dist_id = ac_id
-                if distance > self.max_dist:
-                    self.max_dist = distance
-                    self.max_dist_id = ac_id
-                if distance > 8 * Config.minimum_separation and len(self.possible_miss) < 3:
-                    too_close = []
-                    for miss_id in self.possible_miss:
-                        close = MultiAircraftEnv.metric(aircraft.position, ac_dict[miss_id].position) < 2 * Config.minimum_separation
-                        too_close.append(close)
-                    if any(too_close):
-                        continue
-                    else:
-                        if first and ac_id in self.information_center_last:
-                            self.possible_miss.append(ac_id)
-                        elif ac_id in self.information_center:
-                            self.possible_miss.append(ac_id)
+                prob_loss = np.clip(distance / (10 * Config.minimum_separation) - 1, 0, 0.5)
+                rn = np.random.rand(1)
+                if prob_loss < rn and len(self.miss_ids) < 3:
+                    self.miss_ids.append(ac_id)
 
-    def get_aircraft_info(self, ac_dict, first=False, action=None, action_by_id=None):
-        # first plane to make decision can't have communication loss
+    def get_aircraft_info(self, ac_dict):
         self.miss_ids = []
-        self.miss_idx = []
-        self.information_center_last = self.information_center
         self.information_center = {}
-        self.dist_min_max(ac_dict, first)
+        self.dist_min_max(ac_dict)
         state = []
+        ac_copy = ac_dict.copy()
+        if self.id % 8 == 0:
+            self.communication_loss = True
+            for lost in self.miss_ids:
+                self.miss_ac.append(ac_copy.pop(lost))
 
-        for i, (ac_id, aircraft) in enumerate(ac_dict.items()):
+        for i, (ac_id, aircraft) in enumerate(ac_copy.items()):
             aircraft.idx = i
-            rd = np.random.rand(1)
-            if ac_id in self.possible_miss and rd < 1/3 and self.id % 8 == 0:  # 1/3 loss rate, every 8 plane
-                self.miss_ids.append(ac_id)
-                self.miss_idx.append(i)
-                self.communication_loss = True
-                if first:
-                    predicted = self.default_step(ac_id, action[aircraft.idx])  # assume move straight
-                    state += predicted
-                else:
-                    state += [0] * 9
-                continue
             self.information_center[ac_id] = aircraft.send_info_to(None, True)
             state += self.information_center[ac_id]
-
-        if first:  # in first iteration, every aircraft move to toward goal
-            for ac in ac_dict.values():
-                a = self.move_toward_goal(ac)
-                action[ac.idx] = a
-                action_by_id[ac.id] = a
 
         if not self.miss_ids:
             self.communication_loss = False
@@ -703,10 +674,7 @@ class Aircraft:
         self.state = np.reshape(state, (-1, 9))
         assert self.idx is not None
 
-        if first:
-            return self, action, action_by_id
-        else:
-            return self
+        return self
 
     def make_decision(self, action, action_by_id):
         state = MultiAircraftState(state=self.state, index=self.idx, init_action=action)
