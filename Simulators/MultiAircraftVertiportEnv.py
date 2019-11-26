@@ -250,10 +250,10 @@ class MultiAircraftEnv(gym.Env):
                     aircraft.conflict_id_set.discard(id2)  # discarding element not in the set won't raise error
 
                 else:  # conflict!!
-                    # if self.debug:
-                        # self.render()
-                        # import ipdb
-                        # ipdb.set_trace()
+                    if self.debug:
+                        self.render()
+                        import ipdb
+                        ipdb.set_trace()
                     conflict = True
                     if id2 not in aircraft.conflict_id_set:  # and dist < self.minimum_separation:  # use original min separation
                         self.conflicts += 1
@@ -688,6 +688,7 @@ class Aircraft:
         return MultiAircraftEnv.metric(self.goal.position, self.position)
 
     def dist_min_max(self, ac_dict):
+        self.miss_ids = []
         for ac_id, aircraft in ac_dict.items():
             if ac_id != self.id:
                 distance = MultiAircraftEnv.metric(self.position, aircraft.position)
@@ -696,11 +697,10 @@ class Aircraft:
                     self.min_dist_id = ac_id
                 prob_loss = np.clip(distance / (15 * Config.minimum_separation) - 1, 0, 0.5)
                 rn = np.random.rand(1)
-                if prob_loss < rn and len(self.miss_ids) < 3:
+                if rn < prob_loss and len(self.miss_ids) < 3:
                     self.miss_ids.append(ac_id)
 
     def get_aircraft_info(self, ac_dict):
-        self.miss_ids = []
         self.information_center = {}
         self.dist_min_max(ac_dict)
         state = []
