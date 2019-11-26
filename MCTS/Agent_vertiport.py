@@ -52,6 +52,8 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                 # make decision for each aircraft one by one using centralized controller
                 if not decentralized or num_existing_aircraft == 0:
                     for index in range(num_existing_aircraft):
+                        if id_list[index] in env.centralized_controller.missing_aircraft:
+                            continue
                         state = MultiAircraftState(state=last_observation, index=index, init_action=action)
                         root = MultiAircraftNode(state=state)
                         mcts = MCTS(root)
