@@ -695,7 +695,7 @@ class Aircraft:
                 if distance < self.min_dist:
                     self.min_dist = distance
                     self.min_dist_id = ac_id
-                prob_loss = np.clip(distance / (15 * Config.minimum_separation) - 1, 0, 0.5)
+                prob_loss = np.clip(distance / (100) - 1, 0, 0.5)
                 rn = np.random.rand(1)
                 if rn < prob_loss and len(self.miss_ids) < 3:
                     self.miss_ids.append(ac_id)
