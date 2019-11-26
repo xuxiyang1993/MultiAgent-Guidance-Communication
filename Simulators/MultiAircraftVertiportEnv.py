@@ -593,7 +593,7 @@ class Aircraft:
         if not self.communication_loss:
 
             randdd = np.random.rand(1)
-            if self.steps > 80 and not to_aircraft and self.dist_goal() < 5 * Config.goal_radius and randdd < self.prob_lost:
+            if self.steps > 80 and not to_aircraft and self.dist_goal() > 5 * Config.goal_radius and randdd < self.prob_lost:
                 self.steps_to_lost = np.random.uniform(2, 10)
 
                 self.communication_loss = True
