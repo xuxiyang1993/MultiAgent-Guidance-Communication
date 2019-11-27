@@ -36,6 +36,7 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
         near_end = False
         counter = 0  # avoid end episode initially
 
+        # before = time.time()
         while not done:
             if render:
                 env.render()
@@ -153,6 +154,8 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                 print('NMAC/h:', (env.NMACs / 2) / (env.total_timesteps / 3600))
                 print('Total Flight Hours:', env.total_timesteps / 3600)
                 print('Current Aircraft Enroute:', env.aircraft_dict.num_aircraft)
+                # after = time.time()
+                # print('Current time:', after - before)
 
             if env.id_tracker - 1 >= 10000:
                 counter += 1

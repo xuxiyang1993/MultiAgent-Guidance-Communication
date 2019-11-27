@@ -546,13 +546,12 @@ class Aircraft:
         self.information_center = {}
         self.action_center = {}
         self.action = 1
-        self.visible_aircraft = OrderedDict()
+        self.visible_aircraft = []
         self.min_dist = np.inf
         self.min_dist_id = None
         self.state = None
         self.idx = None
         self.miss_ids = []
-        self.miss_ac = []
 
     def load_config(self):
         self.G = Config.G
@@ -706,8 +705,8 @@ class Aircraft:
         state = []
         ac_copy = ac_dict.copy()
         for lost in self.miss_ids:
-            self.miss_ac.append(ac_copy.pop(lost))
-        self.visible_aircraft = ac_copy
+            ac_copy.pop(lost)
+        self.visible_aircraft = list(ac_copy.keys())
 
         for i, (ac_id, aircraft) in enumerate(ac_copy.items()):
             if ac_id == self.id:
@@ -722,7 +721,7 @@ class Aircraft:
     def make_decision(self):
         self.action = None
         action = []
-        for ac_id, aircraft in self.visible_aircraft.items():
+        for ac_id in self.visible_aircraft:
             try:
                 action.append(self.action_center[ac_id])
             except KeyError:
@@ -741,7 +740,7 @@ class Aircraft:
         return self
 
     def broadcast_action(self, ac_dict):
-        for ac_id in self.visible_aircraft.keys():
+        for ac_id in self.visible_aircraft:
             ac_dict[ac_id].action_center[self.id] = self.action
         return ac_dict
 
