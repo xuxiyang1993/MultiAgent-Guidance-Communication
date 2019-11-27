@@ -43,6 +43,10 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                 # import ipdb
                 # ipdb.set_trace()
             # make decision every 5 time steps
+
+            # if episode_time_step > 1904:
+            #     import ipdb; ipdb.set_trace()
+
             if episode_time_step % 5 == 0:
 
                 time_before = int(round(time.time() * 1000))
@@ -59,7 +63,12 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                         root = MultiAircraftNode(state=state)
                         mcts = MCTS(root)
                         # if aircraft if close to another aircraft, build a larger tree, else build smaller tree
-                        if info[index] < 3 * Config.minimum_separation:
+
+                        # if episode_time_step > 1904:
+                        #     if id_list[index] == 79 or id_list[index] == 82:
+                        #         import ipdb; ipdb.set_trace()
+
+                        if info[id_list[index]] < 3 * Config.minimum_separation:
                             best_node = mcts.best_action(Config.no_simulations, Config.search_depth)
                         else:
                             best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)

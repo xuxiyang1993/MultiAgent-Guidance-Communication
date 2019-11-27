@@ -233,6 +233,7 @@ class MultiAircraftEnv(gym.Env):
         reward = 0
         # info = {'n': [], 'c': [], 'w': [], 'g': []}
         info_dist_list = []
+        info_dist_dict = {}
         aircraft_to_remove = []  # add goal-aircraft and out-of-map aircraft to this list
 
         for id, aircraft in self.aircraft_dict.ac_dict.items():
@@ -240,6 +241,7 @@ class MultiAircraftEnv(gym.Env):
             dist_array, id_array = self.dist_to_all_aircraft(aircraft)
             min_dist = min(dist_array) if dist_array.shape[0] > 0 else 9999
             info_dist_list.append(min_dist)
+            info_dist_dict[id] = min_dist
             aircraft.min_dist = min_dist
 
             conflict = False
@@ -306,7 +308,7 @@ class MultiAircraftEnv(gym.Env):
         self.centralized_controller.collect_removed(removed_id)
 
         # info_dist_list is the min_dist to other aircraft for each aircraft.
-        return reward, False, info_dist_list
+        return reward, False, info_dist_dict
 
     def render(self, mode='human'):
         from gym.envs.classic_control import rendering
@@ -593,13 +595,13 @@ class Aircraft:
 
             randdd = np.random.rand(1)
             if self.steps > 80 and not to_aircraft and self.dist_goal() > 5 * Config.goal_radius and randdd < self.prob_lost:
-                self.steps_to_lost = np.random.uniform(2, 10)
+                self.steps_to_lost = np.random.uniform(2, 5)
 
                 self.communication_loss = True
                 self.loss_happened = True
                 self.lost_steps += 1
 
-                self.minimum_separation = Config.minimum_separation + 0.21 * self.lost_steps
+                self.minimum_separation = Config.minimum_separation + 0.42 * self.lost_steps
 
             else:
                 self.lost_steps = 0
