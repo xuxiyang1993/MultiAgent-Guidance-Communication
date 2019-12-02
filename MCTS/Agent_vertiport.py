@@ -68,7 +68,7 @@ def run_experiment(env, no_episodes, render, save_path, decentralized):
                         #     if id_list[index] == 79 or id_list[index] == 82:
                         #         import ipdb; ipdb.set_trace()
 
-                        if info[id_list[index]] < 3 * Config.minimum_separation:
+                        if info[id_list[index]] < 4 * Config.minimum_separation:
                             best_node = mcts.best_action(Config.no_simulations, Config.search_depth)
                         else:
                             best_node = mcts.best_action(Config.no_simulations_lite, Config.search_depth_lite)
