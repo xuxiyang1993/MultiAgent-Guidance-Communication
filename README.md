@@ -45,8 +45,21 @@ The simulator codes are under `Simulators\`
 
 `MultiAircraftVertiportEnv.py` is the main simulator. Some main functions include:
 
-* `__init__`
+* `__init__()` initilize the simulator by generating vertiports, centralized controller, loading configuration parameters, generating aircraft.
 
+* `reset()` will reset the number of conflicts/NMACs to 0 and reset the aircraft dictionary. Note here all the aircraft objects are stored in the `AircraftDict` class, where we can add/remove aircraft from it, and get aircraft object by id.
+
+* `_get_ob()` will return the current state, which is n by 8 matrix, where n is the number of aircraft. Each aircraft has (x, y, vx, vy, speed, heading, gx, gy) state information.
+
+* `_get_normalized_ob()` will return the normalized current state, which will potential be useful if we want to feed state into a neural network.
+
+* `step()` will return next state, reward, terminal, info given current state and current action. Each aircraft will fly according the given action. We have a clock at each vertiport to decide whether to generate new flight request/aircraft.
+
+* `_terminal_reward()` will return the reward function for current state. This function will check if there is any conflict/NMAC between any two aircraft and update conflict/NMAC number. It will also remove aircraft that reaches goal position and aircraft pair that has NMAC.
+
+* `render()` will visualize all of the current aircraft and vertiport. I used this to generate the demo video.
+
+* `Controller` class is the centralized controller, which can receive information from aircraft and process the missing information.
 
 If you have any questions or comments, don't hesitate to send me an email! I am looking for ways to make this code even more computationally efficient.
 
