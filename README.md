@@ -25,7 +25,7 @@ Optional arguments:
 
 `--seed` seed of the experiment
 
-`--render` if render the env while running exp
+`--render` set to True to visualize the simulator while running exp
 
 `--decentralized` set it to True for decentralized control, default False
 
